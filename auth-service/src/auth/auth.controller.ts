@@ -154,4 +154,43 @@ export class AuthController {
       service: 'Auth Service',
     };
   }
+
+  @Post('validate-token')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ 
+    summary: 'Validar token JWT y obtener información del usuario',
+    description: 'Endpoint para que otros microservicios validen tokens JWT' 
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Token válido',
+    schema: {
+      type: 'object',
+      properties: {
+        valid: { type: 'boolean' },
+        user: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            email: { type: 'string' },
+            firstName: { type: 'string' },
+            lastName: { type: 'string' },
+            role: { type: 'string' },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Token inválido o expirado',
+  })
+  async validateToken(@Request() req: any): Promise<{ valid: boolean; user: User }> {
+    const user = await this.authService.getProfile(req.user.id);
+    return {
+      valid: true,
+      user: user,
+    };
+  }
 } 

@@ -58,6 +58,7 @@ services:
       - pgadmin_data:/var/lib/pgadmin
     networks:
       - auth-network
+      - media-network  # Para acceder también a postgres-media
 
   # Servicio de Autenticación
   auth-service:
@@ -136,6 +137,7 @@ services:
       DB_PASSWORD: admin123
       JWT_SECRET: mi_super_secreto_jwt_para_autenticacion_2024
       CORS_ORIGIN: "*"
+      AUTH_SERVICE_URL: http://auth-service:3000
     ports:
       - "5901:3000"
     volumes:

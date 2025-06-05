@@ -4,12 +4,12 @@ import {
   ExecutionContext,
   UnauthorizedException,
 } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
 import { Request } from 'express';
+import { AuthService } from './auth.service';
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
-  constructor(private jwtService: JwtService) {}
+  constructor(private authService: AuthService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
@@ -20,14 +20,19 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     try {
-      const payload = await this.jwtService.verifyAsync(token, {
-        secret: process.env.JWT_SECRET,
-      });
+      // Validar token con el auth-service
+      const user = await this.authService.validateToken(token);
       
       // Añadir la información del usuario al request
-      request['user'] = payload;
-    } catch {
-      throw new UnauthorizedException('Token inválido');
+      request['user'] = {
+        sub: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role,
+      };
+    } catch (error) {
+      throw new UnauthorizedException(error.message || 'Token inválido');
     }
     return true;
   }

@@ -19,4 +19,8 @@ export declare class AuthController {
         timestamp: string;
         service: string;
     };
+    validateToken(req: any): Promise<{
+        valid: boolean;
+        user: User;
+    }>;
 }

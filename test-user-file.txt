@@ -1,0 +1,1 @@
+Este es un archivo de prueba para el usuario usuario@ejemplo.com. Contiene suficiente texto para dividir en chunks y verificar que la autenticación JWT funciona correctamente en Swagger UI.

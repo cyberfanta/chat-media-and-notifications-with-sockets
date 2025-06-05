@@ -11,6 +11,8 @@ import {
   Request,
   Query,
   BadRequestException,
+  Res,
+  StreamableFile,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
@@ -22,6 +24,7 @@ import {
   ApiBody,
   ApiParam,
 } from '@nestjs/swagger';
+import { Response } from 'express';
 import { MediaService } from '../services/media.service';
 import { InitUploadDto } from '../dto/init-upload.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -30,7 +33,7 @@ import { Media } from '../entities/media.entity';
 @ApiTags('Media')
 @Controller('media')
 @UseGuards(JwtAuthGuard)
-@ApiBearerAuth()
+@ApiBearerAuth('JWT-auth')
 export class MediaController {
   constructor(private readonly mediaService: MediaService) {}
 
@@ -199,8 +202,8 @@ export class MediaController {
 
   @Delete(':id')
   @ApiOperation({
-    summary: 'Eliminar media',
-    description: 'Elimina un archivo multimedia y sus archivos asociados',
+    summary: 'Eliminar archivo multimedia',
+    description: 'Elimina un archivo multimedia y todos sus recursos asociados',
   })
   @ApiParam({
     name: 'id',
@@ -229,5 +232,206 @@ export class MediaController {
     return { message: 'Media eliminado exitosamente' };
   }
 
+  @Post('split-file')
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiOperation({
+    summary: 'Dividir archivo en chunks (Testing)',
+    description: 'Divide un archivo en la cantidad especificada de chunks para testing de upload-chunk',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+          description: 'Archivo a dividir',
+        },
+        chunks: {
+          type: 'number',
+          description: 'Número de chunks en que dividir el archivo',
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Archivo dividido exitosamente',
+    schema: {
+      type: 'object',
+      properties: {
+        originalName: { type: 'string' },
+        originalSize: { type: 'number' },
+        totalChunks: { type: 'number' },
+        chunkSize: { type: 'number' },
+        chunks: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              chunkNumber: { type: 'number' },
+              size: { type: 'number' },
+              data: { type: 'string', description: 'Base64 encoded chunk data' },
+            },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Archivo o número de chunks inválido',
+  })
+  async splitFile(
+    @UploadedFile() file: Express.Multer.File,
+    @Body('chunks') chunks: string,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Archivo requerido');
+    }
 
+    const numChunks = parseInt(chunks);
+    if (isNaN(numChunks) || numChunks <= 0 || numChunks > 1000) {
+      throw new BadRequestException('Número de chunks inválido (debe ser entre 1 y 1000)');
+    }
+
+    return await this.mediaService.splitFileForTesting(file, numChunks);
+  }
+
+  @Get(':id/download')
+  @ApiOperation({
+    summary: 'Descargar archivo multimedia',
+    description: 'Descarga el archivo multimedia completado',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'ID del media a descargar',
+    type: 'string',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Archivo descargado exitosamente',
+    content: {
+      'application/octet-stream': {
+        schema: {
+          type: 'string',
+          format: 'binary',
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Archivo no encontrado',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Archivo no está disponible (aún procesando)',
+  })
+  async downloadFile(
+    @Param('id') id: string,
+    @Request() req: any,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
+    const { stream, media } = await this.mediaService.getFileStream(id, req.user.sub);
+    
+    res.set({
+      'Content-Type': media.mimeType,
+      'Content-Disposition': `attachment; filename="${media.originalName}"`,
+      'Content-Length': media.totalSize.toString(),
+    });
+
+    return new StreamableFile(stream);
+  }
+
+  @Get(':id/view')
+  @ApiOperation({
+    summary: 'Ver archivo multimedia en el navegador',
+    description: 'Visualiza el archivo multimedia directamente en el navegador',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'ID del media a visualizar',
+    type: 'string',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Archivo mostrado exitosamente',
+    content: {
+      'image/*': {
+        schema: {
+          type: 'string',
+          format: 'binary',
+        },
+      },
+      'video/*': {
+        schema: {
+          type: 'string',
+          format: 'binary',
+        },
+      },
+      'audio/*': {
+        schema: {
+          type: 'string',
+          format: 'binary',
+        },
+      },
+    },
+  })
+  async viewFile(
+    @Param('id') id: string,
+    @Request() req: any,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
+    const { stream, media } = await this.mediaService.getFileStream(id, req.user.sub);
+    
+    res.set({
+      'Content-Type': media.mimeType,
+      'Content-Disposition': `inline; filename="${media.originalName}"`,
+      'Content-Length': media.totalSize.toString(),
+    });
+
+    return new StreamableFile(stream);
+  }
+
+  @Get('storage/info')
+  @ApiOperation({
+    summary: 'Información del almacenamiento',
+    description: 'Obtiene información sobre el uso del almacenamiento local',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Información del almacenamiento',
+    schema: {
+      type: 'object',
+      properties: {
+        uploadsDir: { type: 'string' },
+        chunksDir: { type: 'string' },
+        totalFiles: { type: 'number' },
+        diskUsage: {
+          type: 'object',
+          properties: {
+            uploads: {
+              type: 'object',
+              properties: {
+                files: { type: 'number' },
+                sizeBytes: { type: 'number' },
+              },
+            },
+            chunks: {
+              type: 'object',
+              properties: {
+                files: { type: 'number' },
+                sizeBytes: { type: 'number' },
+              },
+            },
+          },
+        },
+      },
+    },
+  })
+  async getStorageInfo() {
+    return await this.mediaService.getStorageInfo();
+  }
 } 

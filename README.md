@@ -153,13 +153,59 @@ docker system prune -f
 | GET | `/media/:id` | Obtener información de un media | JWT |
 | GET | `/media` | Obtener medias del usuario | JWT |
 | DELETE | `/media/:id` | Eliminar media | JWT |
+| GET | `/media/:id/download` | Descargar archivo | JWT |
+| GET | `/media/:id/view` | Ver archivo en navegador | JWT |
+| GET | `/media/storage/info` | Información de almacenamiento | JWT |
 | GET | `/media/health` | Estado del servicio | No |
 
 ### 📖 Documentación Swagger
 - **Auth Service**: http://localhost:5900/api/docs
 - **Media Service**: http://localhost:5901/api/docs
 
-## 🧪 Testing
+## 🔧 Herramientas de Testing para Upload Multimedia
+
+### 🧰 Endpoint de División de Archivos (Testing Tool)
+| Método | Endpoint | Descripción | Autenticación |
+|--------|----------|-------------|---------------|
+| POST | `/media/split-file` | Dividir archivo en chunks para testing | JWT |
+
+Este endpoint especial permite dividir cualquier archivo en la cantidad de chunks especificada, devolviendo cada chunk en formato base64. Es ideal para probar el workflow completo de upload multipart.
+
+**Ejemplo de uso**:
+```bash
+curl -X POST http://localhost:5901/media/split-file \
+  -H "Authorization: Bearer TU_TOKEN_JWT" \
+  -F "file=@video.mp4" \
+  -F "chunks=5"
+```
+
+### 📋 Scripts de Testing Automatizado
+
+#### 1. Script Node.js de Testing Completo
+```bash
+cd media-service
+npm run test:upload
+```
+
+Este script ejecuta un workflow completo de testing:
+1. Divide un archivo usando `/split-file`
+2. Inicializa el upload con `/init-upload`
+3. Sube cada chunk con `/upload-chunk`
+4. Completa el upload con `/complete-upload`
+
+#### 2. Utilidades de Testing en TypeScript
+Ubicadas en `media-service/src/utils/testing-helpers.ts`:
+- Conversión de chunks base64 a Buffer
+- Creación de FormData para uploads
+- Clase `MediaUploadTester` para testing automatizado
+
+#### 3. Guía Detallada de Testing
+Ver `media-service/TESTING.md` para instrucciones paso a paso sobre:
+- Testing manual con Postman/Insomnia
+- Testing automatizado con scripts
+- Conversión de chunks y troubleshooting
+
+## 🧪 Testing de Servicios
 
 ```bash
 # Ejecutar tests dentro del contenedor
@@ -201,6 +247,184 @@ cp auth-service/env.example auth-service/.env
 cd auth-service
 npm install
 npm run start:dev
+```
+
+## 🗄️ Sistema de Almacenamiento de Archivos
+
+### **Almacenamiento Local (Actual)**
+
+Actualmente, los archivos se almacenan **localmente** en el sistema de archivos del contenedor, no en un bucket en la nube. Esta configuración es ideal para desarrollo y testing.
+
+#### **Estructura de Directorios**
+
+```
+media-service/
+├── uploads/          # Archivos finales completados
+│   ├── abc123.mp4   # Videos
+│   ├── def456.jpg   # Imágenes  
+│   └── ghi789.mp3   # Audio
+├── chunks/           # Chunks temporales durante upload
+│   ├── media-id-1/  # Chunks por archivo
+│   │   ├── chunk_0
+│   │   ├── chunk_1
+│   │   └── chunk_2
+│   └── media-id-2/
+└── src/
+```
+
+#### **Volúmenes Docker**
+
+```yaml
+volumes:
+  - media_uploads:/app/uploads    # Archivos permanentes
+  - media_chunks:/app/chunks      # Chunks temporales
+```
+
+#### **Endpoints de Acceso a Archivos**
+
+| Endpoint | Descripción | Uso |
+|----------|-------------|-----|
+| `GET /media/:id/download` | Descargar archivo | Descarga con nombre original |
+| `GET /media/:id/view` | Ver en navegador | Visualización directa |
+| `GET /media/storage/info` | Info almacenamiento | Estadísticas de uso |
+
+#### **Ejemplo de Uso de Archivos**
+
+```bash
+# 1. Listar archivos del usuario
+curl -H "Authorization: Bearer TOKEN" \
+  http://localhost:5901/media
+
+# 2. Descargar archivo específico
+curl -H "Authorization: Bearer TOKEN" \
+  http://localhost:5901/media/abc123-def456/download \
+  -o "mi_archivo.mp4"
+
+# 3. Ver archivo en navegador (para imágenes/videos)
+curl -H "Authorization: Bearer TOKEN" \
+  http://localhost:5901/media/abc123-def456/view
+
+# 4. Ver información de almacenamiento
+curl -H "Authorization: Bearer TOKEN" \
+  http://localhost:5901/media/storage/info
+```
+
+#### **Información de Almacenamiento**
+
+El endpoint `/media/storage/info` devuelve:
+
+```json
+{
+  "uploadsDir": "/app/uploads",
+  "chunksDir": "/app/chunks",
+  "totalFiles": 15,
+  "diskUsage": {
+    "uploads": {
+      "files": 12,
+      "sizeBytes": 52428800
+    },
+    "chunks": {
+      "files": 3,
+      "sizeBytes": 1048576
+    }
+  }
+}
+```
+
+### **Migración a Almacenamiento en la Nube (Opcional)**
+
+Para producción, se recomienda migrar a un sistema de almacenamiento en la nube:
+
+#### **Opciones Recomendadas**
+
+1. **AWS S3**: Más popular, integración directa
+2. **MinIO**: Compatible S3, auto-hospedado
+3. **Google Cloud Storage**: Buena integración con GCP
+4. **Azure Blob Storage**: Para entornos Microsoft
+
+#### **Configuración MinIO (Recomendado para desarrollo)**
+
+MinIO es compatible con S3 y se puede ejecutar localmente:
+
+```yaml
+# Agregar a docker-compose.yml
+minio:
+  image: minio/minio:latest
+  ports:
+    - "9000:9000"
+    - "9001:9001"
+  environment:
+    MINIO_ROOT_USER: admin
+    MINIO_ROOT_PASSWORD: admin123
+  command: server /data --console-address ":9001"
+  volumes:
+    - minio_data:/data
+
+volumes:
+  minio_data:
+```
+
+#### **Variables de Entorno para S3**
+
+```bash
+# Para producción con AWS S3
+STORAGE_TYPE=s3
+AWS_ACCESS_KEY_ID=your_access_key
+AWS_SECRET_ACCESS_KEY=your_secret_key
+AWS_REGION=us-east-1
+S3_BUCKET_NAME=your-media-bucket
+
+# Para desarrollo con MinIO
+STORAGE_TYPE=s3
+AWS_ACCESS_KEY_ID=admin
+AWS_SECRET_ACCESS_KEY=admin123
+AWS_REGION=us-east-1
+S3_BUCKET_NAME=media-bucket
+S3_ENDPOINT=http://localhost:9000
+S3_FORCE_PATH_STYLE=true
+```
+
+### **Acceso Manual a Archivos**
+
+#### **Desde el contenedor**
+
+```bash
+# Entrar al contenedor media-service
+docker exec -it media-service sh
+
+# Listar archivos subidos
+ls -la /app/uploads/
+
+# Ver un archivo específico
+file /app/uploads/abc123.mp4
+
+# Ver tamaño de directorios
+du -sh /app/uploads/
+du -sh /app/chunks/
+```
+
+#### **Desde el host (desarrollo)**
+
+Los volúmenes Docker permiten acceso desde el host:
+
+```bash
+# Ver ubicación de volúmenes
+docker volume inspect chat-media-and-notifications-with-sockets_media_uploads
+
+# En Windows con Docker Desktop
+# Los archivos están en: \\wsl$\docker-desktop-data\version-pack-data\community\docker\volumes\
+```
+
+#### **Backup de Archivos**
+
+```bash
+# Backup de todos los archivos
+docker run --rm -v chat-media-and-notifications-with-sockets_media_uploads:/data \
+  -v $(pwd):/backup alpine tar czf /backup/media-backup.tar.gz -C /data .
+
+# Restaurar backup
+docker run --rm -v chat-media-and-notifications-with-sockets_media_uploads:/data \
+  -v $(pwd):/backup alpine tar xzf /backup/media-backup.tar.gz -C /data
 ```
 
 ## 📝 Ejemplos de Uso
@@ -329,21 +553,41 @@ curl -X DELETE http://localhost:5901/media/MEDIA_ID \
 
 8. **Clic "Save"**
 
+9. **Agregar servidor Media Database** (repetir pasos 4-8 con los siguientes datos):
+   - **Name**: `Media Database`
+   - **Host name/address**: `postgres-media` ⚠️ **¡MUY IMPORTANTE: NO uses `localhost`!**
+   - **Port**: `5432`
+   - **Maintenance database**: `media_db`
+   - **Username**: `admin`
+   - **Password**: `admin123`
+   - **Save password**: ✅ **Marcar esta opción**
+
 ### **Verificar la Conexión**
 
 Si todo está correcto, deberías ver:
 - ✅ **Servidor "Auth Database"** en el panel izquierdo con icono verde
-- ✅ **Base de datos `auth_db`** expandible
+- ✅ **Base de datos `auth_db`** expandible con tabla `users`
+- ✅ **Servidor "Media Database"** en el panel izquierdo con icono verde  
+- ✅ **Base de datos `media_db`** expandible con tabla `media`
 - ✅ **Esquema `public`** con sus tablas
-- ✅ **Tabla `users`** (se crea automáticamente cuando el servicio de auth ejecuta)
 
 ### **Datos de Conexión de Referencia Rápida**
 
+#### **Auth Database**
 | Campo | Valor | Notas |
 |-------|-------|-------|
 | **Host** | `postgres-auth` | ⚠️ NO `localhost` |
 | **Puerto** | `5432` | Puerto estándar PostgreSQL |
 | **Base de datos** | `auth_db` | BD principal del servicio |
+| **Usuario** | `admin` | Usuario con todos los permisos |
+| **Contraseña** | `admin123` | Contraseña del usuario admin |
+
+#### **Media Database**
+| Campo | Valor | Notas |
+|-------|-------|-------|
+| **Host** | `postgres-media` | ⚠️ NO `localhost` |
+| **Puerto** | `5432` | Puerto estándar PostgreSQL |
+| **Base de datos** | `media_db` | BD principal del servicio |
 | **Usuario** | `admin` | Usuario con todos los permisos |
 | **Contraseña** | `admin123` | Contraseña del usuario admin |
 

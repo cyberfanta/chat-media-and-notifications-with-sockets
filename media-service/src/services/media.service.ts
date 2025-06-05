@@ -272,4 +272,129 @@ export class MediaService {
     const extension = mime.extension(mimeType);
     return extension || 'bin';
   }
+
+  // Método para testing: dividir archivo en chunks
+  async splitFileForTesting(
+    file: Express.Multer.File, 
+    numChunks: number
+  ): Promise<{
+    originalName: string;
+    originalSize: number;
+    totalChunks: number;
+    chunkSize: number;
+    chunks: {
+      chunkNumber: number;
+      size: number;
+      data: string;
+    }[];
+  }> {
+    const fileBuffer = file.buffer;
+    const totalSize = fileBuffer.length;
+    const chunkSize = Math.ceil(totalSize / numChunks);
+    
+    const chunks = [];
+    
+    for (let i = 0; i < numChunks; i++) {
+      const start = i * chunkSize;
+      const end = Math.min(start + chunkSize, totalSize);
+      const chunkBuffer = fileBuffer.slice(start, end);
+      
+      chunks.push({
+        chunkNumber: i,
+        size: chunkBuffer.length,
+        data: chunkBuffer.toString('base64'),
+      });
+    }
+    
+    return {
+      originalName: file.originalname,
+      originalSize: totalSize,
+      totalChunks: numChunks,
+      chunkSize: chunkSize,
+      chunks: chunks,
+    };
+  }
+
+  // Métodos para servir archivos
+  async getFileStream(id: string, userId: string): Promise<{ stream: fs.ReadStream; media: Media }> {
+    const media = await this.findMediaByIdAndUser(id, userId);
+    
+    if (media.status !== MediaStatus.COMPLETED) {
+      throw new BadRequestException(
+        `Archivo no disponible. Estado actual: ${media.status}`,
+      );
+    }
+
+    if (!media.filePath || !fs.existsSync(media.filePath)) {
+      throw new NotFoundException('Archivo físico no encontrado');
+    }
+
+    const stream = fs.createReadStream(media.filePath);
+    return { stream, media };
+  }
+
+  async getFileBuffer(id: string, userId: string): Promise<{ buffer: Buffer; media: Media }> {
+    const media = await this.findMediaByIdAndUser(id, userId);
+    
+    if (media.status !== MediaStatus.COMPLETED) {
+      throw new BadRequestException(
+        `Archivo no disponible. Estado actual: ${media.status}`,
+      );
+    }
+
+    if (!media.filePath || !fs.existsSync(media.filePath)) {
+      throw new NotFoundException('Archivo físico no encontrado');
+    }
+
+    const buffer = await fs.promises.readFile(media.filePath);
+    return { buffer, media };
+  }
+
+  async getStorageInfo(): Promise<{
+    uploadsDir: string;
+    chunksDir: string;
+    totalFiles: number;
+    diskUsage: {
+      uploads: { files: number; sizeBytes: number };
+      chunks: { files: number; sizeBytes: number };
+    };
+  }> {
+    const uploadsInfo = await this.getDirectoryInfo(this.uploadsDir);
+    const chunksInfo = await this.getDirectoryInfo(this.chunksDir);
+    
+    const totalFiles = await this.mediaRepository.count({
+      where: { status: MediaStatus.COMPLETED }
+    });
+
+    return {
+      uploadsDir: path.resolve(this.uploadsDir),
+      chunksDir: path.resolve(this.chunksDir),
+      totalFiles,
+      diskUsage: {
+        uploads: uploadsInfo,
+        chunks: chunksInfo,
+      },
+    };
+  }
+
+  private async getDirectoryInfo(dirPath: string): Promise<{ files: number; sizeBytes: number }> {
+    if (!fs.existsSync(dirPath)) {
+      return { files: 0, sizeBytes: 0 };
+    }
+
+    const files = await fs.promises.readdir(dirPath, { withFileTypes: true });
+    let totalFiles = 0;
+    let totalSize = 0;
+
+    for (const file of files) {
+      if (file.isFile()) {
+        totalFiles++;
+        const filePath = path.join(dirPath, file.name);
+        const stats = await fs.promises.stat(filePath);
+        totalSize += stats.size;
+      }
+    }
+
+    return { files: totalFiles, sizeBytes: totalSize };
+  }
 } 
