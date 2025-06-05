@@ -228,7 +228,9 @@ export class MediaController {
     @Param('id') id: string,
     @Request() req: any,
   ): Promise<{ message: string }> {
-    await this.mediaService.deleteMedia(id, req.user.sub);
+    // Extraer token del header para pasarlo al comments-service
+    const token = req.headers.authorization?.split(' ')[1];
+    await this.mediaService.deleteMedia(id, req.user.sub, token);
     return { message: 'Media eliminado exitosamente' };
   }
 

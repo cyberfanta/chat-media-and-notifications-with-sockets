@@ -8,6 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Media, MediaStatus, MediaType } from '../entities/media.entity';
 import { InitUploadDto } from '../dto/init-upload.dto';
+import { CommentsService } from './comments.service';
 import * as fs from 'fs';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
@@ -21,6 +22,7 @@ export class MediaService {
   constructor(
     @InjectRepository(Media)
     private mediaRepository: Repository<Media>,
+    private commentsService: CommentsService,
   ) {
     // Crear directorios si no existen
     this.ensureDirectoryExists(this.uploadsDir);
@@ -158,10 +160,15 @@ export class MediaService {
     });
   }
 
-  async deleteMedia(id: string, userId: string): Promise<void> {
+  async deleteMedia(id: string, userId: string, token?: string): Promise<void> {
     const media = await this.findMediaByIdAndUser(id, userId);
 
     try {
+      // Eliminar comentarios relacionados primero
+      if (token) {
+        await this.commentsService.deleteCommentsByContentId(id, token);
+      }
+
       // Eliminar archivos físicos
       if (media.filePath && fs.existsSync(media.filePath)) {
         await fs.promises.unlink(media.filePath);

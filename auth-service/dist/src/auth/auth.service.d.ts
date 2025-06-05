@@ -27,4 +27,5 @@ export declare class AuthService {
     promoteToModerator(userId: string): Promise<User>;
     private generateAuthResponse;
     refreshToken(userId: string): Promise<AuthResponse>;
+    validateTokenFromOtherService(token: string): Promise<JwtPayload>;
 }

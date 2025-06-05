@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { MediaController } from './controllers/media.controller';
 import { HealthController } from './controllers/health.controller';
 import { MediaService } from './services/media.service';
+import { CommentsService } from './services/comments.service';
 import { AuthService } from './auth/auth.service';
 import { Media } from './entities/media.entity';
 import { databaseConfig } from './config/database.config';
@@ -17,6 +18,6 @@ import { databaseConfig } from './config/database.config';
     TypeOrmModule.forFeature([Media]),
   ],
   controllers: [MediaController, HealthController],
-  providers: [MediaService, AuthService],
+  providers: [MediaService, CommentsService, AuthService],
 })
 export class AppModule {} 

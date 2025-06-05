@@ -156,8 +156,6 @@ export class AuthController {
   }
 
   @Post('validate-token')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth('JWT-auth')
   @ApiOperation({ 
     summary: 'Validar token JWT y obtener información del usuario',
     description: 'Endpoint para que otros microservicios validen tokens JWT' 
@@ -169,16 +167,11 @@ export class AuthController {
       type: 'object',
       properties: {
         valid: { type: 'boolean' },
-        user: {
-          type: 'object',
-          properties: {
-            id: { type: 'string' },
-            email: { type: 'string' },
-            firstName: { type: 'string' },
-            lastName: { type: 'string' },
-            role: { type: 'string' },
-          },
-        },
+        sub: { type: 'string' },
+        email: { type: 'string' },
+        role: { type: 'string' },
+        iat: { type: 'number' },
+        exp: { type: 'number' },
       },
     },
   })
@@ -186,11 +179,16 @@ export class AuthController {
     status: 401,
     description: 'Token inválido o expirado',
   })
-  async validateToken(@Request() req: any): Promise<{ valid: boolean; user: User }> {
-    const user = await this.authService.getProfile(req.user.id);
-    return {
-      valid: true,
-      user: user,
-    };
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        token: { type: 'string', description: 'JWT token a validar' },
+      },
+      required: ['token'],
+    },
+  })
+  async validateToken(@Body() body: { token: string }): Promise<any> {
+    return await this.authService.validateTokenFromOtherService(body.token);
   }
 } 

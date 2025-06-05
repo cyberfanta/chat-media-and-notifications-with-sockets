@@ -86,6 +86,19 @@ let AuthService = class AuthService {
         }
         return this.generateAuthResponse(user);
     }
+    async validateTokenFromOtherService(token) {
+        try {
+            const payload = this.jwtService.verify(token);
+            const user = await this.usersService.findById(payload.sub);
+            if (!user || !user.isActive) {
+                throw new common_1.UnauthorizedException('Usuario no válido');
+            }
+            return payload;
+        }
+        catch (error) {
+            throw new common_1.UnauthorizedException('Token inválido o expirado');
+        }
+    }
 };
 exports.AuthService = AuthService;
 exports.AuthService = AuthService = __decorate([

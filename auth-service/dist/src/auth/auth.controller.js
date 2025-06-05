@@ -53,12 +53,8 @@ let AuthController = class AuthController {
             service: 'Auth Service',
         };
     }
-    async validateToken(req) {
-        const user = await this.authService.getProfile(req.user.id);
-        return {
-            valid: true,
-            user: user,
-        };
+    async validateToken(body) {
+        return await this.authService.validateTokenFromOtherService(body.token);
     }
 };
 exports.AuthController = AuthController;
@@ -188,8 +184,6 @@ __decorate([
 ], AuthController.prototype, "healthCheck", null);
 __decorate([
     (0, common_1.Post)('validate-token'),
-    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
-    (0, swagger_1.ApiBearerAuth)('JWT-auth'),
     (0, swagger_1.ApiOperation)({
         summary: 'Validar token JWT y obtener información del usuario',
         description: 'Endpoint para que otros microservicios validen tokens JWT'
@@ -201,16 +195,11 @@ __decorate([
             type: 'object',
             properties: {
                 valid: { type: 'boolean' },
-                user: {
-                    type: 'object',
-                    properties: {
-                        id: { type: 'string' },
-                        email: { type: 'string' },
-                        firstName: { type: 'string' },
-                        lastName: { type: 'string' },
-                        role: { type: 'string' },
-                    },
-                },
+                sub: { type: 'string' },
+                email: { type: 'string' },
+                role: { type: 'string' },
+                iat: { type: 'number' },
+                exp: { type: 'number' },
             },
         },
     }),
@@ -218,7 +207,16 @@ __decorate([
         status: 401,
         description: 'Token inválido o expirado',
     }),
-    __param(0, (0, common_1.Request)()),
+    (0, swagger_1.ApiBody)({
+        schema: {
+            type: 'object',
+            properties: {
+                token: { type: 'string', description: 'JWT token a validar' },
+            },
+            required: ['token'],
+        },
+    }),
+    __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", Promise)

@@ -123,4 +123,22 @@ export class AuthService {
 
     return this.generateAuthResponse(user);
   }
+
+  async validateTokenFromOtherService(token: string): Promise<JwtPayload> {
+    try {
+      // Verificar y decodificar el token
+      const payload = this.jwtService.verify(token) as JwtPayload;
+      
+      // Verificar que el usuario existe y está activo
+      const user = await this.usersService.findById(payload.sub);
+      
+      if (!user || !user.isActive) {
+        throw new UnauthorizedException('Usuario no válido');
+      }
+
+      return payload;
+    } catch (error) {
+      throw new UnauthorizedException('Token inválido o expirado');
+    }
+  }
 } 

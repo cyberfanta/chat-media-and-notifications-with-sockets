@@ -59,6 +59,7 @@ services:
     networks:
       - auth-network
       - media-network  # Para acceder también a postgres-media
+      - comments-network  # Para acceder también a postgres-comments
 
   # Servicio de Autenticación
   auth-service:
@@ -138,6 +139,7 @@ services:
       JWT_SECRET: mi_super_secreto_jwt_para_autenticacion_2024
       CORS_ORIGIN: "*"
       AUTH_SERVICE_URL: http://auth-service:3000
+      COMMENTS_SERVICE_URL: http://comments-service:3000
     ports:
       - "5901:3000"
     volumes:
@@ -151,8 +153,67 @@ services:
     networks:
       - media-network
       - auth-network  # Para comunicarse con auth-service
+      - comments-network  # Para comunicarse con comments-service
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Base de datos PostgreSQL para Comments
+  postgres-comments:
+    image: postgres:15-alpine
+    container_name: postgres-comments
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: comments_db
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+      POSTGRES_HOST_AUTH_METHOD: md5
+      POSTGRES_INITDB_ARGS: "--auth-host=md5"
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_comments_data:/var/lib/postgresql/data
+    networks:
+      - comments-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d comments_db"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Servicio de Comments
+  comments-service:
+    build:
+      context: ./comments-service
+      dockerfile: Dockerfile.dev
+    container_name: comments-service
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      DB_HOST: postgres-comments
+      DB_PORT: 5432
+      DB_NAME: comments_db
+      DB_USER: admin
+      DB_PASSWORD: admin123
+      JWT_SECRET: mi_super_secreto_jwt_para_autenticacion_2024
+      CORS_ORIGIN: "*"
+      AUTH_SERVICE_URL: http://auth-service:3000
+    ports:
+      - "5902:3000"
+    volumes:
+      - ./comments-service:/app
+      - /app/node_modules
+    depends_on:
+      postgres-comments:
+        condition: service_healthy
+    networks:
+      - comments-network
+      - auth-network  # Para comunicarse con auth-service
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/comments/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -160,6 +221,7 @@ services:
 volumes:
   postgres_auth_data:
   postgres_media_data:
+  postgres_comments_data:
   redis_auth_data:
   pgadmin_data:
   media_uploads:
@@ -169,4 +231,6 @@ networks:
   auth-network:
     driver: bridge
   media-network:
+    driver: bridge
+  comments-network:
     driver: bridge 

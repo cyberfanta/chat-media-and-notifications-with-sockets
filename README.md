@@ -97,8 +97,11 @@ docker system prune -f
 | **Auth Swagger** | 5900 | http://localhost:5900/api/docs | Documentación Auth API |
 | **Media Service** | 5901 | http://localhost:5901 | API de archivos multimedia |
 | **Media Swagger** | 5901 | http://localhost:5901/api/docs | Documentación Media API |
+| **Comments Service** | 5902 | http://localhost:5902 | API de comentarios |
+| **Comments Swagger** | 5902 | http://localhost:5902/api/docs | Documentación Comments API |
 | **PostgreSQL Auth** | 5432 | localhost:5432 | Base de datos autenticación |
 | **PostgreSQL Media** | 5433 | localhost:5433 | Base de datos multimedia |
+| **PostgreSQL Comments** | 5434 | localhost:5434 | Base de datos comentarios |
 | **Redis** | 6379 | localhost:6379 | Cache y sesiones |
 | **pgAdmin** | 5050 | http://localhost:5050 | Administrador de BD (solo desarrollo) |
 
@@ -115,6 +118,13 @@ docker system prune -f
 - **Host**: localhost
 - **Puerto**: 5433
 - **Base de datos**: `media_db`
+- **Usuario**: `admin`
+- **Contraseña**: `admin123`
+
+### Base de Datos PostgreSQL Comments
+- **Host**: localhost
+- **Puerto**: 5434
+- **Base de datos**: `comments_db`
 - **Usuario**: `admin`
 - **Contraseña**: `admin123`
 
@@ -158,9 +168,24 @@ docker system prune -f
 | GET | `/media/storage/info` | Información de almacenamiento | JWT |
 | GET | `/media/health` | Estado del servicio | No |
 
+### 💬 Comments Service (Puerto 5902)
+| Método | Endpoint | Descripción | Autenticación |
+|--------|----------|-------------|---------------|
+| POST | `/comments/content/:contentId` | Crear comentario en contenido | JWT |
+| GET | `/comments/content/:contentId` | Obtener comentarios con paginación | No |
+| GET | `/comments/:id` | Obtener comentario específico | No |
+| PUT | `/comments/:id` | Actualizar comentario propio | JWT |
+| DELETE | `/comments/:id` | Eliminar comentario propio | JWT |
+| PUT | `/comments/:id/moderate` | Moderar comentario | JWT |
+| GET | `/comments/moderation/pending` | Comentarios pendientes | JWT |
+| DELETE | `/comments/content/:contentId` | Eliminar todos los comentarios de un contenido | JWT |
+| GET | `/comments/stats/:contentId` | Estadísticas de comentarios | No |
+| GET | `/comments/health` | Estado del servicio | No |
+
 ### 📖 Documentación Swagger
 - **Auth Service**: http://localhost:5900/api/docs
 - **Media Service**: http://localhost:5901/api/docs
+- **Comments Service**: http://localhost:5902/api/docs
 
 ## 🔧 Herramientas de Testing para Upload Multimedia
 
@@ -775,7 +800,7 @@ Ya tenemos implementados los primeros dos microservicios. Los siguientes servici
 
 1. ✅ **Servicio de Autenticación** (puerto 5900) - ¡Completado!
 2. ✅ **Servicio de Contenido Multimedia** (puerto 5901) - ¡Completado!
-3. **Servicio de Comentarios** (puerto 5902)
+3. ✅ **Servicio de Comentarios** (puerto 5902) - ¡Completado!
 4. **Servicio de Notificaciones** (puerto 5903)
 5. **Servicio de Procesamiento** (puerto 5904)
 
