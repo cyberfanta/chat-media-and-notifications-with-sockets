@@ -1,17 +1,28 @@
-# 🚀 Servicio de Autenticación - Microservicio
+# 🚀 Plataforma de Contenido Multimedia - Microservicios
 
-Este es el servicio de autenticación para la plataforma de contenido multimedia, desarrollado con NestJS, PostgreSQL, Redis y Docker.
+Sistema completo de gestión de contenido multimedia con microservicios de autenticación y media, desarrollado con NestJS, PostgreSQL, Redis y Docker.
 
 ## 📋 Características
 
+### 🔐 Auth Service
 - ✅ Autenticación JWT
 - ✅ Registro y login de usuarios
 - ✅ Sistema de roles (USER, MODERATOR, ADMIN)
 - ✅ Promoción de usuarios a moderadores
+
+### 📁 Media Service
+- ✅ Upload multipart de archivos multimedia
+- ✅ Soporte para imágenes, videos y audios
+- ✅ Gestión de chunks para archivos grandes
+- ✅ Validación de tipos MIME
+- ✅ Eliminación segura de archivos
+
+### 🛠️ Características Generales
 - ✅ Documentación Swagger automática
 - ✅ Validaciones con class-validator
 - ✅ Tests unitarios con Jest
 - ✅ Docker y Docker Compose
+- ✅ Arquitectura de microservicios
 
 ## 🛠️ Tecnologías
 
@@ -83,17 +94,27 @@ docker system prune -f
 | Servicio | Puerto | URL | Descripción |
 |----------|--------|-----|-------------|
 | **Auth Service** | 5900 | http://localhost:5900 | API de autenticación |
-| **Swagger Docs** | 5900 | http://localhost:5900/api/docs | Documentación API |
-| **PostgreSQL** | 5432 | localhost:5432 | Base de datos |
+| **Auth Swagger** | 5900 | http://localhost:5900/api/docs | Documentación Auth API |
+| **Media Service** | 5901 | http://localhost:5901 | API de archivos multimedia |
+| **Media Swagger** | 5901 | http://localhost:5901/api/docs | Documentación Media API |
+| **PostgreSQL Auth** | 5432 | localhost:5432 | Base de datos autenticación |
+| **PostgreSQL Media** | 5433 | localhost:5433 | Base de datos multimedia |
 | **Redis** | 6379 | localhost:6379 | Cache y sesiones |
 | **pgAdmin** | 5050 | http://localhost:5050 | Administrador de BD (solo desarrollo) |
 
 ## 🔑 Credenciales por Defecto
 
-### Base de Datos PostgreSQL
+### Base de Datos PostgreSQL Auth
 - **Host**: localhost
 - **Puerto**: 5432
 - **Base de datos**: `auth_db`
+- **Usuario**: `admin`
+- **Contraseña**: `admin123`
+
+### Base de Datos PostgreSQL Media
+- **Host**: localhost
+- **Puerto**: 5433
+- **Base de datos**: `media_db`
 - **Usuario**: `admin`
 - **Contraseña**: `admin123`
 
@@ -113,7 +134,7 @@ docker system prune -f
 
 ## 📚 Endpoints de la API
 
-### Autenticación
+### 🔐 Auth Service (Puerto 5900)
 | Método | Endpoint | Descripción | Autenticación |
 |--------|----------|-------------|---------------|
 | POST | `/auth/register` | Registrar nuevo usuario | No |
@@ -123,8 +144,20 @@ docker system prune -f
 | POST | `/auth/promote-to-moderator` | Promover a moderador | JWT + ADMIN |
 | GET | `/auth/health` | Estado del servicio | No |
 
-### Documentación Swagger
-Visita http://localhost:5900/api/docs para ver la documentación interactiva completa.
+### 📁 Media Service (Puerto 5901)
+| Método | Endpoint | Descripción | Autenticación |
+|--------|----------|-------------|---------------|
+| POST | `/media/init-upload` | Inicializar upload multipart | JWT |
+| POST | `/media/upload-chunk/:mediaId` | Subir chunk de archivo | JWT |
+| POST | `/media/complete-upload/:mediaId` | Completar y ensamblar archivo | JWT |
+| GET | `/media/:id` | Obtener información de un media | JWT |
+| GET | `/media` | Obtener medias del usuario | JWT |
+| DELETE | `/media/:id` | Eliminar media | JWT |
+| GET | `/media/health` | Estado del servicio | No |
+
+### 📖 Documentación Swagger
+- **Auth Service**: http://localhost:5900/api/docs
+- **Media Service**: http://localhost:5901/api/docs
 
 ## 🧪 Testing
 
@@ -172,7 +205,9 @@ npm run start:dev
 
 ## 📝 Ejemplos de Uso
 
-### 1. Registrar un nuevo usuario
+### 🔐 Auth Service
+
+#### 1. Registrar un nuevo usuario
 ```bash
 curl -X POST http://localhost:5900/auth/register \
   -H "Content-Type: application/json" \
@@ -184,7 +219,7 @@ curl -X POST http://localhost:5900/auth/register \
   }'
 ```
 
-### 2. Iniciar sesión
+#### 2. Iniciar sesión
 ```bash
 curl -X POST http://localhost:5900/auth/login \
   -H "Content-Type: application/json" \
@@ -194,13 +229,13 @@ curl -X POST http://localhost:5900/auth/login \
   }'
 ```
 
-### 3. Obtener perfil (con token)
+#### 3. Obtener perfil (con token)
 ```bash
 curl -X GET http://localhost:5900/auth/profile \
   -H "Authorization: Bearer TU_TOKEN_JWT"
 ```
 
-### 4. Promover usuario a moderador (solo ADMIN)
+#### 4. Promover usuario a moderador (solo ADMIN)
 ```bash
 curl -X POST http://localhost:5900/auth/promote-to-moderator \
   -H "Content-Type: application/json" \
@@ -208,6 +243,54 @@ curl -X POST http://localhost:5900/auth/promote-to-moderator \
   -d '{
     "userId": "uuid-del-usuario"
   }'
+```
+
+### 📁 Media Service
+
+#### 1. Inicializar upload de archivo multimedia
+```bash
+curl -X POST http://localhost:5901/media/init-upload \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer TU_TOKEN_JWT" \
+  -d '{
+    "originalName": "mi_video.mp4",
+    "mimeType": "video/mp4",
+    "type": "video",
+    "totalSize": 104857600,
+    "totalChunks": 100
+  }'
+```
+
+#### 2. Subir chunk de archivo
+```bash
+curl -X POST http://localhost:5901/media/upload-chunk/MEDIA_ID_OBTENIDO \
+  -H "Authorization: Bearer TU_TOKEN_JWT" \
+  -F "file=@chunk_0.bin" \
+  -F "chunkNumber=0"
+```
+
+#### 3. Completar upload
+```bash
+curl -X POST http://localhost:5901/media/complete-upload/MEDIA_ID_OBTENIDO \
+  -H "Authorization: Bearer TU_TOKEN_JWT"
+```
+
+#### 4. Obtener información de un media
+```bash
+curl -X GET http://localhost:5901/media/MEDIA_ID \
+  -H "Authorization: Bearer TU_TOKEN_JWT"
+```
+
+#### 5. Obtener todos los medias del usuario
+```bash
+curl -X GET http://localhost:5901/media \
+  -H "Authorization: Bearer TU_TOKEN_JWT"
+```
+
+#### 6. Eliminar un media
+```bash
+curl -X DELETE http://localhost:5901/media/MEDIA_ID \
+  -H "Authorization: Bearer TU_TOKEN_JWT"
 ```
 
 ## 🗄️ Configuración de pgAdmin
@@ -444,21 +527,118 @@ auth-service/
 
 ## 🔄 Próximos Pasos
 
-Este es el primer microservicio de la plataforma. Los siguientes servicios a desarrollar serán:
+Ya tenemos implementados los primeros dos microservicios. Los siguientes servicios a desarrollar serán:
 
-1. **Servicio de Contenido Multimedia** (puerto 5901)
-2. **Servicio de Comentarios** (puerto 5902)
-3. **Servicio de Notificaciones** (puerto 5903)
-4. **Servicio de Procesamiento** (puerto 5904)
+1. ✅ **Servicio de Autenticación** (puerto 5900) - ¡Completado!
+2. ✅ **Servicio de Contenido Multimedia** (puerto 5901) - ¡Completado!
+3. **Servicio de Comentarios** (puerto 5902)
+4. **Servicio de Notificaciones** (puerto 5903)
+5. **Servicio de Procesamiento** (puerto 5904)
 
 ## 📞 Soporte
 
 Si tienes problemas o preguntas:
 
-1. Revisa los logs: `docker-compose logs auth-service`
-2. Verifica la documentación Swagger: http://localhost:5900/api/docs
-3. Ejecuta los tests para verificar funcionalidad: `npm test`
+1. **Revisa los logs**:
+   - Auth Service: `docker-compose logs auth-service`
+   - Media Service: `docker-compose logs media-service`
+
+2. **Verifica la documentación Swagger**:
+   - Auth Service: http://localhost:5900/api/docs
+   - Media Service: http://localhost:5901/api/docs
+
+3. **Ejecuta los tests**: `docker-compose exec [service-name] npm test`
+
+4. **Verifica el estado de los servicios**:
+   - Auth: `curl http://localhost:5900/auth/health`
+   - Media: `curl http://localhost:5901/media/health`
+
+## 🧪 Testing
+
+### Media Service - Pruebas Unitarias
+
+El Media Service incluye un conjunto completo de pruebas unitarias que cubren las funcionalidades principales:
+
+#### Cobertura de Pruebas
+
+- **MediaService**: Tests completos de la lógica de negocio
+  - Inicialización de uploads
+  - Upload de chunks
+  - Completar uploads
+  - Validación de tipos MIME
+  - Operaciones CRUD
+
+- **HealthController**: Tests del endpoint de salud
+  - Respuesta de estado
+  - Formato de timestamp
+  - Consistencia de estructura
+
+- **InitUploadDto**: Tests de validación de datos
+  - Propiedades requeridas
+  - Tipos de media soportados
+  - Lógica de validación
+
+#### Ejecutar Pruebas
+
+```bash
+# Ejecutar todas las pruebas
+docker-compose exec media-service npm test
+
+# Ejecutar pruebas con cobertura
+docker-compose exec media-service npm run test:cov
+
+# Ejecutar pruebas en modo watch
+docker-compose exec media-service npm run test:watch
+
+# Ejecutar solo pruebas unitarias
+docker-compose exec media-service npm run test:unit
+
+# Ejecutar pruebas para CI/CD
+docker-compose exec media-service npm run test:ci
+```
+
+#### Resultados de Cobertura
+
+- **26 tests** ejecutados exitosamente
+- **3 suites de tests** completadas
+- Cobertura de código configurada con umbral mínimo
+- Tests automatizados sin dependencias externas
+
+#### Estructura de Tests
+
+```
+media-service/src/
+├── controllers/
+│   └── health.controller.spec.ts
+├── dto/
+│   └── init-upload.dto.spec.ts
+├── services/
+│   └── media.service.spec.ts
+└── test-setup.ts
+```
+
+#### Configuración de Jest
+
+- **Mocks automatizados** para fs, path y TypeORM
+- **Variables de entorno** configuradas para testing
+- **Timeout personalizado** para tests de integración
+- **Reportes de cobertura** en formato text, lcov y html
+
+### Características de Testing
+
+✅ **Tests Unitarios**: Cobertura de lógica de negocio  
+✅ **Mocks Avanzados**: Simulación de sistema de archivos  
+✅ **Validación de DTOs**: Tests de validación de entrada  
+✅ **Error Handling**: Tests de manejo de errores  
+✅ **Async Operations**: Tests de operaciones asíncronas  
+
+### Lineamientos para Testing
+
+- Todos los nuevos servicios deben incluir pruebas unitarias
+- Cobertura mínima del 70% para servicios críticos
+- Tests de integración para endpoints principales
+- Documentación de casos de prueba complejos
 
 ---
 
-**¡El servicio de autenticación está listo para usar! 🎉** 
+**¡Los microservicios de autenticación y media están listos para usar! 🎉** 
