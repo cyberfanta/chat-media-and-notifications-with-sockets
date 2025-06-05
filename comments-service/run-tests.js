@@ -8,6 +8,7 @@ const testFiles = [
   'src/dto/create-comment.dto.spec.ts', 
   'src/services/comments.service.simple.spec.ts',
   'src/services/comments.service.working.spec.ts',
+  'src/services/comments.service.cursor.spec.ts',
   'src/controllers/comments.controller.simple.spec.ts'
 ];
 
@@ -61,7 +62,7 @@ console.log(`📈 Total de pruebas: ${totalTests}`);
 console.log('\n📈 Generando reporte de cobertura...');
 try {
   const coverageResult = execSync(
-    `npx jest --config jest.config.js --coverage --silent --testPathPattern="entity|dto|simple|working"`,
+    `npx jest --config jest.config.js --coverage --silent --testPathPattern="entity|dto|simple|working|cursor"`,
     { encoding: 'utf8', stdio: 'pipe' }
   );
   

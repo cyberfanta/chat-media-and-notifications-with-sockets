@@ -19,8 +19,8 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "test:unit": "node run-tests.js",
-    "test:coverage": "npx jest --config jest.config.js --coverage --testPathPattern=\"entity|dto|simple|working\"",
-    "test:ci": "npx jest --config jest.config.js --coverage --ci --testPathPattern=\"entity|dto|simple|working\""
+    "test:coverage": "npx jest --config jest.config.js --coverage --testPathPattern=\"entity|dto|simple|working|cursor\"",
+    "test:ci": "npx jest --config jest.config.js --coverage --ci --testPathPattern=\"entity|dto|simple|working|cursor\""
   },
   "dependencies": {
     "@nestjs/common": "^10.0.0",

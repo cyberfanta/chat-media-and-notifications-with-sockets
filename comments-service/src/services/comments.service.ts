@@ -11,16 +11,20 @@ import { Comment, CommentStatus } from '../entities/comment.entity';
 import { CreateCommentDto } from '../dto/create-comment.dto';
 import { UpdateCommentDto } from '../dto/update-comment.dto';
 import { ModerateCommentDto } from '../dto/moderate-comment.dto';
-import { QueryCommentsDto, CommentSortBy } from '../dto/query-comments.dto';
+import { QueryCommentsDto, CommentSortBy, SortOrder } from '../dto/query-comments.dto';
 
 export interface PaginatedComments {
   comments: Comment[];
   total: number;
-  page: number;
+  page?: number;
   limit: number;
-  totalPages: number;
+  totalPages?: number;
   hasNext: boolean;
   hasPrev: boolean;
+  // Cursor-based pagination fields
+  nextCursor?: string;
+  prevCursor?: string;
+  usedCursor?: boolean;
 }
 
 @Injectable()
@@ -69,8 +73,13 @@ export class CommentsService {
 
   async findByContentId(contentId: string, query: QueryCommentsDto): Promise<PaginatedComments> {
     try {
-      const { page, limit, sortBy, sortOrder, status, userId, parentId, topLevelOnly } = query;
+      const { page = 1, limit, sortBy, sortOrder, status, userId, parentId, topLevelOnly, cursor, useCursor } = query;
       
+      if (useCursor) {
+        return this.findByContentIdWithCursor(contentId, query);
+      }
+      
+      // Fallback a paginación offset-based tradicional
       const queryBuilder = this.commentRepository
         .createQueryBuilder('comment')
         .where('comment.contentId = :contentId', { contentId });
@@ -102,7 +111,7 @@ export class CommentsService {
 
       queryBuilder.orderBy(orderField, sortOrder);
 
-      // Aplicar paginación
+      // Aplicar paginación offset-based
       const skip = (page - 1) * limit;
       queryBuilder.skip(skip).take(limit);
 
@@ -112,7 +121,7 @@ export class CommentsService {
       const hasNext = page < totalPages;
       const hasPrev = page > 1;
 
-      this.logger.debug(`Found ${comments.length} comments for content ${contentId}, page ${page}`);
+      this.logger.debug(`Found ${comments.length} comments for content ${contentId}, page ${page} (offset-based)`);
 
       return {
         comments,
@@ -122,11 +131,132 @@ export class CommentsService {
         totalPages,
         hasNext,
         hasPrev,
+        usedCursor: false,
       };
     } catch (error) {
       this.logger.error(`Error finding comments: ${error.message}`);
       throw error;
     }
+  }
+
+  private async findByContentIdWithCursor(contentId: string, query: QueryCommentsDto): Promise<PaginatedComments> {
+    const { limit, sortBy, sortOrder, status, userId, parentId, topLevelOnly, cursor } = query;
+    
+    const queryBuilder = this.commentRepository
+      .createQueryBuilder('comment')
+      .where('comment.contentId = :contentId', { contentId });
+
+    // Aplicar filtros
+    if (status) {
+      queryBuilder.andWhere('comment.status = :status', { status });
+    }
+
+    if (userId) {
+      queryBuilder.andWhere('comment.userId = :userId', { userId });
+    }
+
+    if (parentId) {
+      queryBuilder.andWhere('comment.parentId = :parentId', { parentId });
+    }
+
+    if (topLevelOnly) {
+      queryBuilder.andWhere('comment.parentId IS NULL');
+    }
+
+    // Determinar el campo de ordenamiento
+    let orderField = 'comment.createdAt';
+    let orderFieldAlias = 'createdAt';
+    if (sortBy === CommentSortBy.UPDATED_AT) {
+      orderField = 'comment.updatedAt';
+      orderFieldAlias = 'updatedAt';
+    } else if (sortBy === CommentSortBy.LIKES) {
+      orderField = 'comment.likes';
+      orderFieldAlias = 'likes';
+    }
+
+    // Aplicar cursor si existe
+    if (cursor) {
+      // Obtener el valor del campo de ordenamiento del comentario cursor
+      const cursorComment = await this.commentRepository.findOne({ 
+        where: { id: cursor },
+        select: ['id', orderFieldAlias as keyof Comment] 
+      });
+
+      if (cursorComment) {
+        const cursorValue = cursorComment[orderFieldAlias];
+        
+        if (sortOrder === SortOrder.DESC) {
+          // Para orden descendente, necesitamos comentarios con valores menores al cursor
+          queryBuilder.andWhere(`${orderField} < :cursorValue OR (${orderField} = :cursorValue AND comment.id < :cursorId)`, {
+            cursorValue,
+            cursorId: cursor
+          });
+        } else {
+          // Para orden ascendente, necesitamos comentarios con valores mayores al cursor
+          queryBuilder.andWhere(`${orderField} > :cursorValue OR (${orderField} = :cursorValue AND comment.id > :cursorId)`, {
+            cursorValue,
+            cursorId: cursor
+          });
+        }
+      }
+    }
+
+    // Aplicar ordenamiento (siempre incluir ID como campo secundario para consistencia)
+    queryBuilder.orderBy(orderField, sortOrder);
+    queryBuilder.addOrderBy('comment.id', sortOrder);
+
+    // Obtener un elemento extra para determinar si hay más páginas
+    queryBuilder.take(limit + 1);
+
+    const comments = await queryBuilder.getMany();
+    const hasNext = comments.length > limit;
+    
+    // Si hay más comentarios, remover el extra
+    if (hasNext) {
+      comments.pop();
+    }
+
+    // Determinar cursors para navegación
+    const nextCursor = hasNext && comments.length > 0 ? comments[comments.length - 1].id : undefined;
+    const hasPrev = !!cursor; // Si hay cursor, significa que hay página previa
+
+    // Para obtener el cursor previo, necesitaríamos hacer una consulta inversa
+    // Por simplicidad, solo indicamos si hay página previa
+    const prevCursor = hasPrev ? null : undefined; // Se puede implementar si es necesario
+
+    // Obtener total aproximado (puede ser costoso para grandes datasets)
+    const totalQueryBuilder = this.commentRepository
+      .createQueryBuilder('comment')
+      .where('comment.contentId = :contentId', { contentId });
+    
+    // Aplicar los mismos filtros para el conteo
+    if (status) {
+      totalQueryBuilder.andWhere('comment.status = :status', { status });
+    }
+    if (userId) {
+      totalQueryBuilder.andWhere('comment.userId = :userId', { userId });
+    }
+    if (parentId) {
+      totalQueryBuilder.andWhere('comment.parentId = :parentId', { parentId });
+    }
+    if (topLevelOnly) {
+      totalQueryBuilder.andWhere('comment.parentId IS NULL');
+    }
+
+    const total = await totalQueryBuilder.getCount();
+
+    this.logger.debug(`Found ${comments.length} comments for content ${contentId} with cursor ${cursor} (cursor-based)`);
+
+    return {
+      comments,
+      total,
+      limit,
+      hasNext,
+      hasPrev,
+      nextCursor,
+      prevCursor,
+      usedCursor: true,
+    };
   }
 
   async findById(id: string): Promise<Comment> {

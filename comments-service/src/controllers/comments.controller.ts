@@ -76,7 +76,7 @@ export class CommentsController {
   @Get('content/:contentId')
   @ApiOperation({
     summary: 'Obtener comentarios de contenido multimedia',
-    description: 'Obtiene todos los comentarios de un contenido específico con paginación',
+    description: 'Obtiene todos los comentarios de un contenido específico con paginación. Soporta paginación basada en offset (tradicional) y paginación basada en cursor (recomendada para datos en tiempo real).',
   })
   @ApiParam({
     name: 'contentId',
@@ -86,7 +86,7 @@ export class CommentsController {
   @ApiQuery({
     name: 'page',
     required: false,
-    description: 'Número de página',
+    description: 'Número de página (solo para paginación offset-based)',
     example: 1,
   })
   @ApiQuery({
@@ -94,6 +94,18 @@ export class CommentsController {
     required: false,
     description: 'Elementos por página',
     example: 10,
+  })
+  @ApiQuery({
+    name: 'useCursor',
+    required: false,
+    description: 'Usar paginación basada en cursor para evitar inconsistencias con nuevos comentarios',
+    example: true,
+  })
+  @ApiQuery({
+    name: 'cursor',
+    required: false,
+    description: 'ID del último comentario visto (para paginación cursor-based)',
+    example: 'comment-uuid-123',
   })
   @ApiQuery({
     name: 'status',
@@ -112,11 +124,14 @@ export class CommentsController {
           items: { $ref: '#/components/schemas/Comment' },
         },
         total: { type: 'number' },
-        page: { type: 'number' },
+        page: { type: 'number', description: 'Número de página actual (solo offset-based)' },
         limit: { type: 'number' },
-        totalPages: { type: 'number' },
+        totalPages: { type: 'number', description: 'Total de páginas (solo offset-based)' },
         hasNext: { type: 'boolean' },
         hasPrev: { type: 'boolean' },
+        nextCursor: { type: 'string', description: 'Cursor para la siguiente página (solo cursor-based)' },
+        prevCursor: { type: 'string', description: 'Cursor para la página anterior (solo cursor-based)' },
+        usedCursor: { type: 'boolean', description: 'Indica si se usó paginación cursor-based' },
       },
     },
   })

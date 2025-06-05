@@ -103,4 +103,23 @@ export class QueryCommentsDto {
   @IsOptional()
   @Transform(({ value }) => value === 'true' || value === true)
   topLevelOnly?: boolean = false;
+
+  @ApiProperty({
+    description: 'Cursor para paginación basada en cursor (ID del último comentario visto)',
+    example: 'comment-uuid-123',
+    required: false,
+  })
+  @IsOptional()
+  @IsUUID('all')
+  cursor?: string;
+
+  @ApiProperty({
+    description: 'Usar paginación basada en cursor en lugar de offset',
+    example: true,
+    default: false,
+    required: false,
+  })
+  @IsOptional()
+  @Transform(({ value }) => value === 'true' || value === true)
+  useCursor?: boolean = false;
 } 
