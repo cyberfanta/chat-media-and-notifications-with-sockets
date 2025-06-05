@@ -63,10 +63,10 @@ describe('CommentsController Simple Tests', () => {
 
   describe('createComment', () => {
     it('should create a comment', async () => {
-      const createDto = { content: 'Test', contentId: 'content-id' };
+      const createDto = { content: 'Test', contentId: 'media-id' };
       commentsService.create.mockResolvedValue(mockComment);
 
-      const result = await controller.createComment('content-id', createDto, mockRequest);
+      const result = await controller.createComment('media-id', createDto, mockRequest);
 
       expect(commentsService.create).toHaveBeenCalledWith(
         createDto, 
@@ -77,7 +77,7 @@ describe('CommentsController Simple Tests', () => {
     });
   });
 
-  describe('getCommentsByContent', () => {
+  describe('getCommentsByMedia', () => {
     it('should return paginated comments', async () => {
       const mockResult = {
         comments: [mockComment],
@@ -91,9 +91,9 @@ describe('CommentsController Simple Tests', () => {
       
       commentsService.findByContentId.mockResolvedValue(mockResult);
 
-      const result = await controller.getCommentsByContent('content-id', {});
+      const result = await controller.getCommentsByMedia('media-id', {});
 
-      expect(commentsService.findByContentId).toHaveBeenCalledWith('content-id', {});
+      expect(commentsService.findByContentId).toHaveBeenCalledWith('media-id', {});
       expect(result).toEqual(mockResult);
     });
   });
@@ -155,13 +155,13 @@ describe('CommentsController Simple Tests', () => {
     });
   });
 
-  describe('deleteCommentsByContent', () => {
-    it('should delete comments by content id', async () => {
+  describe('deleteCommentsByMedia', () => {
+    it('should delete comments by media id', async () => {
       commentsService.deleteByContentId.mockResolvedValue();
 
-      await controller.deleteCommentsByContent('content-id');
+      await controller.deleteCommentsByMedia('media-id');
 
-      expect(commentsService.deleteByContentId).toHaveBeenCalledWith('content-id');
+      expect(commentsService.deleteByContentId).toHaveBeenCalledWith('media-id');
     });
   });
 
@@ -171,9 +171,9 @@ describe('CommentsController Simple Tests', () => {
       
       commentsService.getCommentStats.mockResolvedValue(mockStats);
 
-      const result = await controller.getCommentStats('content-id');
+      const result = await controller.getCommentStats('media-id');
 
-      expect(commentsService.getCommentStats).toHaveBeenCalledWith('content-id');
+      expect(commentsService.getCommentStats).toHaveBeenCalledWith('media-id');
       expect(result).toEqual(mockStats);
     });
   });

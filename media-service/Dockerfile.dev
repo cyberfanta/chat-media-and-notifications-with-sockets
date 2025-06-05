@@ -3,19 +3,28 @@ FROM node:18-alpine
 # Instalar ffmpeg para procesamiento de video/audio
 RUN apk add --no-cache ffmpeg
 
+# Crear usuario no-root para seguridad
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nestjs -u 1001 -G nodejs
+
+# Crear y configurar directorio de trabajo
+RUN mkdir -p /app && chown nestjs:nodejs /app
 WORKDIR /app
 
+# Cambiar a usuario no-root ANTES de copiar archivos
+USER nestjs
+
 # Copiar archivos de dependencias
-COPY package*.json ./
+COPY --chown=nestjs:nodejs package*.json ./
 
 # Instalar dependencias
 RUN npm install
 
-# Copiar el código fuente
-COPY . .
+# Copiar el código fuente con ownership correcto
+COPY --chown=nestjs:nodejs . .
 
-# Crear directorios para uploads
-RUN mkdir -p uploads chunks
+# Limpiar directorio dist y crear directorios necesarios con permisos correctos
+RUN rm -rf dist && mkdir -p uploads chunks dist
 
 # Exponer el puerto
 EXPOSE 3000

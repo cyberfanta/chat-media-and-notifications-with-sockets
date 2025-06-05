@@ -9,11 +9,6 @@ export interface ValidatedUser {
   role: string;
 }
 
-export interface TokenValidationResponse {
-  valid: boolean;
-  user: ValidatedUser;
-}
-
 @Injectable()
 export class AuthService {
   private readonly authServiceUrl: string;
@@ -27,22 +22,25 @@ export class AuthService {
       const response = await fetch(`${this.authServiceUrl}/auth/validate-token`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
+        body: JSON.stringify({ token }),
       });
 
       if (!response.ok) {
         throw new UnauthorizedException('Token inválido o expirado');
       }
 
-      const data: TokenValidationResponse = await response.json();
+      const data = await response.json();
       
-      if (!data.valid) {
-        throw new UnauthorizedException('Token inválido');
-      }
-
-      return data.user;
+      // El auth-service retorna directamente el payload del JWT
+      return {
+        id: data.sub,
+        email: data.email,
+        firstName: '', // El auth-service no retorna estos campos en validateToken
+        lastName: '',  // Podríamos hacer una segunda llamada para obtenerlos si es necesario
+        role: data.role,
+      };
     } catch (error) {
       if (error instanceof UnauthorizedException) {
         throw error;

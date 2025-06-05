@@ -3,25 +3,28 @@ FROM node:18-alpine
 # Instalar curl para healthchecks
 RUN apk add --no-cache curl
 
-# Crear directorio de trabajo
+# Crear usuario no root para seguridad ANTES de crear archivos
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nestjs -u 1001 -G nodejs
+
+# Crear y configurar directorio de trabajo
+RUN mkdir -p /app && chown nestjs:nodejs /app
 WORKDIR /app
 
+# Cambiar a usuario no-root ANTES de copiar archivos
+USER nestjs
+
 # Copiar archivos de dependencias
-COPY package*.json ./
+COPY --chown=nestjs:nodejs package*.json ./
 
 # Instalar todas las dependencias (incluyendo dev)
 RUN npm install
 
-# Copiar el código fuente
-COPY . .
+# Copiar el código fuente con ownership correcto
+COPY --chown=nestjs:nodejs . .
 
-# Crear usuario no root para seguridad
-RUN addgroup -g 1001 -S nodejs
-RUN adduser -S nestjs -u 1001
-
-# Cambiar ownership del directorio de trabajo
-RUN chown -R nestjs:nodejs /app
-USER nestjs
+# Limpiar directorio dist si existe
+RUN rm -rf dist && mkdir -p dist
 
 # Exponer el puerto
 EXPOSE 3000

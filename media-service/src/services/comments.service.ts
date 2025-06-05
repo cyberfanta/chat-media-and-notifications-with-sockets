@@ -5,9 +5,9 @@ export class CommentsService {
   private readonly logger = new Logger(CommentsService.name);
   private readonly commentsServiceUrl = process.env.COMMENTS_SERVICE_URL || 'http://comments-service:3000';
 
-  async deleteCommentsByContentId(contentId: string, token: string): Promise<void> {
+  async deleteCommentsByMediaId(mediaId: string, token: string): Promise<void> {
     try {
-      const response = await fetch(`${this.commentsServiceUrl}/comments/content/${contentId}`, {
+      const response = await fetch(`${this.commentsServiceUrl}/comments/media/${mediaId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -16,14 +16,14 @@ export class CommentsService {
       });
 
       if (!response.ok) {
-        this.logger.warn(`Failed to delete comments for content ${contentId}: ${response.statusText}`);
+        this.logger.warn(`Failed to delete comments for media ${mediaId}: ${response.statusText}`);
         return;
       }
 
-      this.logger.log(`Successfully deleted comments for content: ${contentId}`);
+      this.logger.log(`Successfully deleted comments for media: ${mediaId}`);
     } catch (error) {
-      this.logger.error(`Error deleting comments for content ${contentId}: ${error.message}`);
-      // No lanzamos error para que no bloquee la eliminación del contenido multimedia
+      this.logger.error(`Error deleting comments for media ${mediaId}: ${error.message}`);
+      // No lanzamos error para que no bloquee la eliminación del archivo multimedia
     }
   }
 } 

@@ -33,16 +33,16 @@ import { Comment } from '../entities/comment.entity';
 export class CommentsController {
   constructor(private readonly commentsService: CommentsService) {}
 
-  @Post('content/:contentId')
+  @Post('media/:mediaId')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({
-    summary: 'Crear comentario en contenido multimedia',
-    description: 'Permite a un usuario autenticado crear un comentario en un contenido específico',
+    summary: 'Crear comentario en archivo multimedia',
+    description: 'Permite a un usuario autenticado crear un comentario en un archivo multimedia específico',
   })
   @ApiParam({
-    name: 'contentId',
-    description: 'ID del contenido multimedia',
+    name: 'mediaId',
+    description: 'ID del archivo multimedia',
     type: 'string',
   })
   @ApiResponse({
@@ -59,12 +59,12 @@ export class CommentsController {
     description: 'Token no válido',
   })
   async createComment(
-    @Param('contentId') contentId: string,
+    @Param('mediaId') mediaId: string,
     @Body() createCommentDto: CreateCommentDto,
     @Request() req: any,
   ): Promise<Comment> {
-    // Asegurar que el contentId coincida con el del DTO
-    createCommentDto.contentId = contentId;
+    // Asegurar que el mediaId coincida con el del DTO
+    createCommentDto.contentId = mediaId;
     
     return await this.commentsService.create(
       createCommentDto,
@@ -73,14 +73,14 @@ export class CommentsController {
     );
   }
 
-  @Get('content/:contentId')
+  @Get('media/:mediaId')
   @ApiOperation({
-    summary: 'Obtener comentarios de contenido multimedia',
-    description: 'Obtiene todos los comentarios de un contenido específico con paginación. Soporta paginación basada en offset (tradicional) y paginación basada en cursor (recomendada para datos en tiempo real).',
+    summary: 'Obtener comentarios de archivo multimedia',
+    description: 'Obtiene todos los comentarios de un archivo multimedia específico con paginación. Soporta paginación basada en offset (tradicional) y paginación basada en cursor (recomendada para datos en tiempo real).',
   })
   @ApiParam({
-    name: 'contentId',
-    description: 'ID del contenido multimedia',
+    name: 'mediaId',
+    description: 'ID del archivo multimedia',
     type: 'string',
   })
   @ApiQuery({
@@ -135,11 +135,11 @@ export class CommentsController {
       },
     },
   })
-  async getCommentsByContent(
-    @Param('contentId') contentId: string,
+  async getCommentsByMedia(
+    @Param('mediaId') mediaId: string,
     @Query() query: QueryCommentsDto,
   ) {
-    return await this.commentsService.findByContentId(contentId, query);
+    return await this.commentsService.findByContentId(mediaId, query);
   }
 
   @Get('health')
@@ -315,37 +315,37 @@ export class CommentsController {
     return await this.commentsService.getPendingComments(query);
   }
 
-  @Delete('content/:contentId')
+  @Delete('media/:mediaId')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('JWT-auth')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
-    summary: 'Eliminar todos los comentarios de un contenido',
-    description: 'Elimina todos los comentarios asociados a un contenido multimedia (usado cuando se elimina el contenido)',
+    summary: 'Eliminar todos los comentarios de un archivo multimedia',
+    description: 'Elimina todos los comentarios asociados a un archivo multimedia (usado cuando se elimina el archivo)',
   })
   @ApiParam({
-    name: 'contentId',
-    description: 'ID del contenido multimedia',
+    name: 'mediaId',
+    description: 'ID del archivo multimedia',
     type: 'string',
   })
   @ApiResponse({
     status: 204,
     description: 'Comentarios eliminados exitosamente',
   })
-  async deleteCommentsByContent(
-    @Param('contentId') contentId: string,
+  async deleteCommentsByMedia(
+    @Param('mediaId') mediaId: string,
   ): Promise<void> {
-    await this.commentsService.deleteByContentId(contentId);
+    await this.commentsService.deleteByContentId(mediaId);
   }
 
-  @Get('stats/:contentId')
+  @Get('stats/:mediaId')
   @ApiOperation({
     summary: 'Obtener estadísticas de comentarios',
-    description: 'Obtiene estadísticas de comentarios para un contenido específico',
+    description: 'Obtiene estadísticas de comentarios para un archivo multimedia específico',
   })
   @ApiParam({
-    name: 'contentId',
-    description: 'ID del contenido multimedia',
+    name: 'mediaId',
+    description: 'ID del archivo multimedia',
     type: 'string',
   })
   @ApiResponse({
@@ -358,12 +358,12 @@ export class CommentsController {
         approved: { type: 'number' },
         pending: { type: 'number' },
         rejected: { type: 'number' },
-        contentId: { type: 'string' },
+        mediaId: { type: 'string' },
       },
     },
   })
-  async getCommentStats(@Param('contentId') contentId: string) {
-    return await this.commentsService.getCommentStats(contentId);
+  async getCommentStats(@Param('mediaId') mediaId: string) {
+    return await this.commentsService.getCommentStats(mediaId);
   }
 
 } 

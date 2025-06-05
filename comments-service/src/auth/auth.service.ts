@@ -25,10 +25,16 @@ export class AuthService {
         return null;
       }
 
-      const userData = await response.json();
-      this.logger.debug(`Token validated for user: ${userData.email}`);
+      const tokenData = await response.json();
+      this.logger.debug(`Token validated for user: ${tokenData.email}`);
       
-      return userData;
+      // Transformar la respuesta del auth-service para mantener compatibilidad
+      return {
+        sub: tokenData.sub,
+        email: tokenData.email,
+        role: tokenData.role,
+        id: tokenData.sub, // Alias para compatibilidad
+      };
     } catch (error) {
       this.logger.error(`Error connecting to auth service: ${error.message}`);
       this.logger.error(`Stack trace: ${error.stack}`);

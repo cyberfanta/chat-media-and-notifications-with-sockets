@@ -166,7 +166,7 @@ export class MediaService {
     try {
       // Eliminar comentarios relacionados primero
       if (token) {
-        await this.commentsService.deleteCommentsByContentId(id, token);
+        await this.commentsService.deleteCommentsByMediaId(id, token);
       }
 
       // Eliminar archivos físicos

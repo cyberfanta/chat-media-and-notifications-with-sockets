@@ -1,1 +1,0 @@
-{"version":3,"file":"promote-user.dto.js","sourceRoot":"","sources":["../../../../src/auth/dto/promote-user.dto.ts"],"names":[],"mappings":";;;;;;;;;;;;AAAA,6CAA8C;AAC9C,qDAAyC;AAEzC,MAAa,cAAc;CAO1B;AAPD,wCAOC;AADC;IALC,IAAA,qBAAW,EAAC;QACX,OAAO,EAAE,sCAAsC;QAC/C,WAAW,EAAE,uCAAuC;KACrD,CAAC;IACD,IAAA,wBAAM,EAAC,CAAC,EAAE,EAAE,OAAO,EAAE,yBAAyB,EAAE,CAAC;;8CACnC"}
