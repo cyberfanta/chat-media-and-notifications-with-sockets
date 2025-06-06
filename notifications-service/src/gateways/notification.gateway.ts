@@ -210,24 +210,27 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
   }
 
   private async initializeRedisSubscription() {
-    const subscriber = this.redisConfig.getSubscriber();
-    
-    // Solo suscribirse a eventos de notificaciones ya creadas
-    subscriber.subscribe('notification_created');
-    
-    subscriber.on('message', async (channel, message) => {
-      try {
-        this.logger.log(`Gateway recibió evento: ${channel}`);
-        const data = JSON.parse(message);
-        
-        if (channel === 'notification_created') {
+    try {
+      // Suscribirse a eventos de notificaciones ya creadas usando el método del RedisConfig
+      await this.redisConfig.subscribeToNotificationEvents('created', (message: string) => {
+        try {
+          this.logger.log(`Gateway recibió evento de notificación creada`);
+          const data = JSON.parse(message);
+          
           // Enviar la notificación por WebSocket al usuario
-          await this.sendNotificationToUser(data.userId, data.notification);
-          this.logger.log(`Notificación enviada por WebSocket a usuario: ${data.userId}`);
+          this.sendNotificationToUser(data.userId, data.notification).then(() => {
+            this.logger.log(`Notificación enviada por WebSocket a usuario: ${data.userId}`);
+          }).catch(error => {
+            this.logger.error(`Error enviando notificación por WebSocket:`, error.stack);
+          });
+        } catch (error) {
+          this.logger.error('Error procesando mensaje de Redis:', error.stack);
         }
-      } catch (error) {
-        this.logger.error('Error procesando mensaje de Redis:', error.stack);
-      }
-    });
+      });
+      
+      this.logger.log('Redis subscription inicializada para notification:created');
+    } catch (error) {
+      this.logger.error('Error inicializando suscripción de Redis:', error.stack);
+    }
   }
 } 
