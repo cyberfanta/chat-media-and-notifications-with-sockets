@@ -1,14 +1,12 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
 
 export enum NotificationType {
-  // Auth Service
   USER_REGISTERED = 'user_registered',
   LOGIN_NEW_DEVICE = 'login_new_device',
   PASSWORD_CHANGED = 'password_changed',
   LOGIN_FAILED = 'login_failed',
   PROFILE_UPDATED = 'profile_updated',
   
-  // Media Service
   UPLOAD_COMPLETED = 'upload_completed',
   UPLOAD_FAILED = 'upload_failed',
   MEDIA_PROCESSED = 'media_processed',
@@ -17,19 +15,16 @@ export enum NotificationType {
   NEW_CONTENT_FOLLOWED = 'new_content_followed',
   MEDIA_REPORTED = 'media_reported',
   
-  // Comments Service
   NEW_COMMENT = 'new_comment',
   COMMENT_REPLY = 'comment_reply',
   COMMENT_MODERATED = 'comment_moderated',
   COMMENT_APPROVED = 'comment_approved',
   COMMENT_MENTION = 'comment_mention',
   
-  // System
   SYSTEM_MAINTENANCE = 'system_maintenance',
   SYSTEM_UPDATE = 'system_update',
   USAGE_LIMIT_REACHED = 'usage_limit_reached',
   
-  // Social
   NEW_FOLLOWER = 'new_follower',
   CONTENT_LIKED = 'content_liked',
   CONTENT_TRENDING = 'content_trending',

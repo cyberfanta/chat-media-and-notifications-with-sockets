@@ -17,15 +17,14 @@ export class NotificationService {
     private redisConfig: RedisConfig,
   ) {}
 
+  /** Crear una nueva notificación con validación de rate limiting */
   async create(createNotificationDto: CreateNotificationDto): Promise<Notification> {
     try {
-      // Verificar rate limiting
       const canSend = await this.redisConfig.checkRateLimit(createNotificationDto.userId);
       if (!canSend) {
         throw new BadRequestException('Límite de notificaciones excedido para este usuario');
       }
 
-      // Crear la notificación
       const notification = this.notificationRepository.create({
         ...createNotificationDto,
         priority: createNotificationDto.priority || NotificationPriority.MEDIUM,
@@ -35,10 +34,8 @@ export class NotificationService {
 
       const savedNotification = await this.notificationRepository.save(notification);
 
-      // Invalidar cache de notificaciones no leídas
       await this.redisConfig.invalidateUnreadNotifications(createNotificationDto.userId);
 
-      // Publicar evento para envío por WebSocket
       await this.redisConfig.publishNotificationEvent('notification_created', {
         userId: createNotificationDto.userId,
         notification: savedNotification,
@@ -50,6 +47,7 @@ export class NotificationService {
     }
   }
 
+  /** Obtener notificaciones del usuario con filtros y paginación */
   async findAll(userId: string, filters: NotificationFiltersDto): Promise<{ notifications: Notification[], total: number, totalPages: number }> {
     const { page = 1, limit = 20, type, priority, isRead, startDate, endDate } = filters;
     
@@ -81,7 +79,6 @@ export class NotificationService {
     const [notifications, total] = await this.notificationRepository.findAndCount(options);
     const totalPages = Math.ceil(total / limit);
 
-    // Cache notificaciones no leídas si se piden solo las no leídas
     if (isRead === false) {
       await this.redisConfig.cacheUnreadNotifications(userId, notifications);
     }
@@ -89,26 +86,25 @@ export class NotificationService {
     return { notifications, total, totalPages };
   }
 
+  /** Obtener notificaciones no leídas con cache de Redis */
   async findUnread(userId: string): Promise<Notification[]> {
-    // Intentar obtener del cache primero
     const cached = await this.redisConfig.getUnreadNotifications(userId);
     if (cached) {
       return cached;
     }
 
-    // Si no está en cache, consultar la base de datos
     const notifications = await this.notificationRepository.find({
       where: { userId, isRead: false },
       order: { createdAt: 'DESC' },
-      take: 50, // Limitar a las 50 más recientes
+      take: 50,
     });
 
-    // Cachear el resultado
     await this.redisConfig.cacheUnreadNotifications(userId, notifications);
 
     return notifications;
   }
 
+  /** Obtener una notificación específica del usuario */
   async findOne(id: string, userId: string): Promise<Notification> {
     const notification = await this.notificationRepository.findOne({
       where: { id, userId },
@@ -121,6 +117,7 @@ export class NotificationService {
     return notification;
   }
 
+  /** Actualizar una notificación (principalmente para marcar como leída) */
   async update(id: string, userId: string, updateNotificationDto: UpdateNotificationDto): Promise<Notification> {
     const notification = await this.findOne(id, userId);
     
@@ -131,7 +128,6 @@ export class NotificationService {
 
     const updatedNotification = await this.notificationRepository.save(notification);
 
-    // Invalidar cache si se marcó como leída/no leída
     if (updateNotificationDto.isRead !== undefined) {
       await this.redisConfig.invalidateUnreadNotifications(userId);
     }
@@ -139,6 +135,7 @@ export class NotificationService {
     return updatedNotification;
   }
 
+  /** Marcar múltiples notificaciones como leídas */
   async markAsRead(userId: string, markAsReadDto: MarkAsReadDto): Promise<{ marked: number }> {
     let query = this.notificationRepository
       .createQueryBuilder()
@@ -156,38 +153,39 @@ export class NotificationService {
 
     const result = await query.execute();
 
-    // Invalidar cache
     await this.redisConfig.invalidateUnreadNotifications(userId);
 
     return { marked: result.affected || 0 };
   }
 
+  /** Marcar todas las notificaciones del usuario como leídas */
   async markAllAsRead(userId: string): Promise<{ marked: number }> {
     const result = await this.notificationRepository.update(
       { userId, isRead: false },
       { isRead: true, readAt: new Date() }
     );
 
-    // Invalidar cache
     await this.redisConfig.invalidateUnreadNotifications(userId);
 
     return { marked: result.affected || 0 };
   }
 
+  /** Eliminar una notificación específica */
   async remove(id: string, userId: string): Promise<void> {
     const notification = await this.findOne(id, userId);
     await this.notificationRepository.remove(notification);
     
-    // Invalidar cache
     await this.redisConfig.invalidateUnreadNotifications(userId);
   }
 
+  /** Obtener el contador de notificaciones no leídas */
   async getUnreadCount(userId: string): Promise<number> {
     return await this.notificationRepository.count({
       where: { userId, isRead: false },
     });
   }
 
+  /** Limpiar notificaciones expiradas del sistema */
   async cleanupExpiredNotifications(): Promise<{ deleted: number }> {
     const result = await this.notificationRepository
       .createQueryBuilder()
@@ -200,7 +198,7 @@ export class NotificationService {
     return { deleted: result.affected || 0 };
   }
 
-  // Métodos de utilidad para diferentes tipos de notificaciones
+  /** Crear notificación de bienvenida para nuevo usuario */
   async createWelcomeNotification(userId: string): Promise<Notification> {
     return this.create({
       userId,
@@ -212,6 +210,7 @@ export class NotificationService {
     });
   }
 
+  /** Crear notificación de nuevo comentario */
   async createCommentNotification(userId: string, commentData: any): Promise<Notification> {
     return this.create({
       userId,
@@ -225,6 +224,7 @@ export class NotificationService {
     });
   }
 
+  /** Crear notificación de estado de subida de archivo */
   async createUploadNotification(userId: string, uploadData: any, success: boolean): Promise<Notification> {
     return this.create({
       userId,
@@ -240,17 +240,16 @@ export class NotificationService {
     });
   }
 
+  /** Enviar una notificación broadcast a todos los usuarios */
   async createBroadcastNotification(notificationData: any): Promise<{ sent: number }> {
     try {
       let sentCount = 0;
       
-      // Obtener todos los usuarios únicos de la base de datos
       const uniqueUserIds = await this.notificationRepository
         .createQueryBuilder('notification')
         .select('DISTINCT notification.userId', 'userId')
         .getRawMany();
       
-      // Crear notificaciones para todos los usuarios excepto el excluido
       const batchPromises = uniqueUserIds
         .filter(user => user.userId !== notificationData.excludeUserId)
         .map(async (user) => {
@@ -272,7 +271,6 @@ export class NotificationService {
           }
         });
 
-      // Ejecutar todas las promesas en paralelo
       await Promise.allSettled(batchPromises);
       
       this.logger.log(`Broadcast notification sent to ${sentCount} users`);

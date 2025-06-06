@@ -31,11 +31,11 @@ export class AuthService {
     private redisService: RedisService,
   ) {}
 
+  /** Registrar un nuevo usuario en el sistema */
   async register(registerDto: RegisterDto): Promise<AuthResponse> {
     try {
       const user = await this.usersService.create(registerDto);
       
-      // Publicar evento de registro para notificaciones
       await this.redisService.publishNotificationEvent('user_registered', {
         userId: user.id,
         email: user.email,
@@ -53,42 +53,39 @@ export class AuthService {
     }
   }
 
+  /** Autenticar usuario con email y contraseña */
   async login(loginDto: LoginDto): Promise<AuthResponse> {
     const { email, password } = loginDto;
 
-    // Buscar el usuario por email
     const user = await this.usersService.findByEmail(email);
     
     if (!user) {
       throw new UnauthorizedException('Credenciales inválidas');
     }
 
-    // Verificar si el usuario está activo
     if (!user.isActive) {
       throw new UnauthorizedException('Usuario desactivado');
     }
 
-    // Validar la contraseña
     const isPasswordValid = await this.usersService.validatePassword(user, password);
     
     if (!isPasswordValid) {
       throw new UnauthorizedException('Credenciales inválidas');
     }
 
-    // Actualizar último login
     await this.usersService.updateLastLogin(user.id);
 
-    // Publicar evento de login para notificaciones
     await this.redisService.publishNotificationEvent('user_login', {
       userId: user.id,
       email: user.email,
       loginTime: new Date().toISOString(),
-      userAgent: 'Unknown' // Se puede mejorar pasando el request
+      userAgent: 'Unknown'
     });
 
     return this.generateAuthResponse(user);
   }
 
+  /** Validar usuario a partir del payload JWT */
   async validateUser(payload: JwtPayload): Promise<User> {
     const user = await this.usersService.findById(payload.sub);
     
@@ -99,6 +96,7 @@ export class AuthService {
     return user;
   }
 
+  /** Obtener perfil del usuario autenticado */
   async getProfile(userId: string): Promise<User> {
     const user = await this.usersService.findById(userId);
     
@@ -109,10 +107,12 @@ export class AuthService {
     return user;
   }
 
+  /** Promover usuario a rol de moderador */
   async promoteToModerator(userId: string): Promise<User> {
     return await this.usersService.promoteToModerator(userId);
   }
 
+  /** Generar respuesta de autenticación con token JWT */
   private generateAuthResponse(user: User): AuthResponse {
     const payload: JwtPayload = {
       sub: user.id,
@@ -122,7 +122,6 @@ export class AuthService {
 
     const access_token = this.jwtService.sign(payload);
     
-    // Decodificar el token para obtener la fecha de expiración
     const decodedToken = this.jwtService.decode(access_token) as any;
     const expires_in = decodedToken.exp - decodedToken.iat;
 
@@ -134,6 +133,7 @@ export class AuthService {
     };
   }
 
+  /** Renovar token de acceso para usuario válido */
   async refreshToken(userId: string): Promise<AuthResponse> {
     const user = await this.usersService.findById(userId);
     
@@ -144,12 +144,11 @@ export class AuthService {
     return this.generateAuthResponse(user);
   }
 
+  /** Validar token JWT desde otros microservicios */
   async validateTokenFromOtherService(token: string): Promise<JwtPayload> {
     try {
-      // Verificar y decodificar el token
       const payload = this.jwtService.verify(token) as JwtPayload;
       
-      // Verificar que el usuario existe y está activo
       const user = await this.usersService.findById(payload.sub);
       
       if (!user || !user.isActive) {

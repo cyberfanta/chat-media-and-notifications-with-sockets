@@ -19,7 +19,6 @@ export class RedisService implements OnModuleDestroy {
       this.logger.log('Connected to Redis');
     });
 
-    // Conectar automáticamente
     this.connect();
   }
 

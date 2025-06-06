@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   InternalServerErrorException,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -17,8 +18,9 @@ import * as mime from 'mime-types';
 
 @Injectable()
 export class MediaService {
-  private readonly uploadsDir = 'uploads';
-  private readonly chunksDir = 'chunks';
+  private readonly logger = new Logger(MediaService.name);
+  private readonly uploadsDir = path.join(process.cwd(), 'uploads');
+  private readonly chunksDir = path.join(process.cwd(), 'chunks');
 
   constructor(
     @InjectRepository(Media)
@@ -26,343 +28,324 @@ export class MediaService {
     private commentsService: CommentsService,
     private redisService: RedisService,
   ) {
-    // Crear directorios si no existen
-    this.ensureDirectoryExists(this.uploadsDir);
-    this.ensureDirectoryExists(this.chunksDir);
+    this.ensureDirectoriesExist();
   }
 
-  async initializeUpload(initDto: InitUploadDto, userId: string): Promise<Media> {
-    // Validar tipo MIME
-    if (!this.isValidMimeType(initDto.mimeType, initDto.type)) {
-      throw new BadRequestException(
-        `Tipo MIME ${initDto.mimeType} no válido para ${initDto.type}`,
-      );
+  /** Crear directorios necesarios para uploads y chunks */
+  private ensureDirectoriesExist() {
+    if (!fs.existsSync(this.uploadsDir)) {
+      fs.mkdirSync(this.uploadsDir, { recursive: true });
+    }
+    if (!fs.existsSync(this.chunksDir)) {
+      fs.mkdirSync(this.chunksDir, { recursive: true });
+    }
+  }
+
+  /** Validar tipo MIME del archivo */
+  private validateMimeType(mimeType: string, type: MediaType): boolean {
+    const allowedMimeTypes = {
+      [MediaType.IMAGE]: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
+      [MediaType.VIDEO]: ['video/mp4', 'video/webm', 'video/ogg', 'video/avi'],
+      [MediaType.AUDIO]: ['audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/aac'],
+    };
+
+    return allowedMimeTypes[type]?.includes(mimeType) || false;
+  }
+
+  /** Inicializar proceso de upload multipart */
+  async initUpload(userId: string, initUploadDto: InitUploadDto): Promise<Media> {
+    if (!this.validateMimeType(initUploadDto.mimeType, initUploadDto.type)) {
+      throw new BadRequestException(`Tipo MIME ${initUploadDto.mimeType} no permitido para tipo ${initUploadDto.type}`);
     }
 
     const media = this.mediaRepository.create({
-      originalName: initDto.originalName,
-      mimeType: initDto.mimeType,
-      type: initDto.type,
-      totalSize: initDto.totalSize,
-      totalChunks: initDto.totalChunks,
-      uploadedBy: userId,
-      status: MediaStatus.INITIALIZING,
+      id: uuidv4(),
+      userId,
+      originalName: initUploadDto.originalName,
+      mimeType: initUploadDto.mimeType,
+      type: initUploadDto.type,
+      totalSize: initUploadDto.totalSize,
+      totalChunks: initUploadDto.totalChunks,
+      uploadedChunks: 0,
+      status: MediaStatus.PENDING,
     });
 
+    const chunkDir = path.join(this.chunksDir, media.id);
+    if (!fs.existsSync(chunkDir)) {
+      fs.mkdirSync(chunkDir, { recursive: true });
+    }
+
     const savedMedia = await this.mediaRepository.save(media);
-
-    // Crear directorio específico para los chunks de este archivo
-    const chunkDir = path.join(this.chunksDir, savedMedia.id);
-    this.ensureDirectoryExists(chunkDir);
-
-    // Actualizar status a UPLOADING
-    savedMedia.status = MediaStatus.UPLOADING;
-    await this.mediaRepository.save(savedMedia);
+    await this.mediaRepository.update(savedMedia.id, { status: MediaStatus.UPLOADING });
 
     return savedMedia;
   }
 
-  async uploadChunk(
-    mediaId: string,
-    chunkNumber: number,
-    file: Express.Multer.File,
-    userId: string,
-  ): Promise<{ success: boolean; uploadedChunks: number; totalChunks: number }> {
-    const media = await this.findMediaByIdAndUser(mediaId, userId);
+  /** Subir un chunk específico del archivo */
+  async uploadChunk(mediaId: string, userId: string, file: Express.Multer.File, chunkNumber: number): Promise<{ success: boolean, uploadedChunks: number, totalChunks: number }> {
+    const media = await this.mediaRepository.findOne({ 
+      where: { id: mediaId, userId } 
+    });
 
-    if (media.status !== MediaStatus.UPLOADING) {
-      throw new BadRequestException(
-        `No se puede subir chunk. Estado actual: ${media.status}`,
-      );
+    if (!media) {
+      throw new NotFoundException('Media no encontrado');
     }
 
-    if (chunkNumber >= media.totalChunks) {
-      throw new BadRequestException(
-        `Número de chunk inválido: ${chunkNumber}. Máximo: ${media.totalChunks - 1}`,
-      );
+    if (media.status !== MediaStatus.UPLOADING && media.status !== MediaStatus.PENDING) {
+      throw new BadRequestException('El archivo no está en estado de subida');
     }
 
-    try {
-      // Guardar chunk
-      const chunkDir = path.join(this.chunksDir, mediaId);
-      const chunkPath = path.join(chunkDir, `chunk_${chunkNumber}`);
-      
-      // Verificar si el chunk ya existe
-      const chunkExists = fs.existsSync(chunkPath);
-      
-      await fs.promises.writeFile(chunkPath, file.buffer);
+    const chunkDir = path.join(this.chunksDir, mediaId);
+    const chunkPath = path.join(chunkDir, `chunk_${chunkNumber}`);
 
-      // Actualizar contador de chunks subidos
-      const currentUploadedChunks = await this.countUploadedChunks(mediaId);
-      media.uploadedChunks = currentUploadedChunks;
-      
-      console.log(`📦 Chunk ${chunkNumber} guardado para media ${mediaId}. Chunks totales: ${currentUploadedChunks}/${media.totalChunks}`);
-      
-      await this.mediaRepository.save(media);
-
-      return {
-        success: true,
-        uploadedChunks: media.uploadedChunks,
-        totalChunks: media.totalChunks,
-      };
-    } catch (error) {
-      throw new InternalServerErrorException(
-        `Error al guardar chunk: ${error.message}`,
-      );
+    if (fs.existsSync(chunkPath)) {
+      throw new BadRequestException(`El chunk ${chunkNumber} ya existe`);
     }
+
+    fs.writeFileSync(chunkPath, file.buffer);
+
+    const updatedMedia = await this.mediaRepository.update(mediaId, { 
+      uploadedChunks: media.uploadedChunks + 1 
+    });
+
+    const currentMedia = await this.mediaRepository.findOne({ where: { id: mediaId } });
+
+    return {
+      success: true,
+      uploadedChunks: currentMedia.uploadedChunks,
+      totalChunks: currentMedia.totalChunks
+    };
   }
 
+  /** Ensamblar chunks y completar el upload */
   async completeUpload(mediaId: string, userId: string): Promise<Media> {
-    const media = await this.findMediaByIdAndUser(mediaId, userId);
+    const media = await this.mediaRepository.findOne({ 
+      where: { id: mediaId, userId } 
+    });
 
-    console.log(`🔄 Intentando completar upload para media ${mediaId}:`);
-    console.log(`   - Estado actual: ${media.status}`);
-    console.log(`   - Chunks en BD: ${media.uploadedChunks}/${media.totalChunks}`);
-
-    if (media.status !== MediaStatus.UPLOADING && media.status !== MediaStatus.PROCESSING) {
-      throw new BadRequestException(
-        `No se puede completar upload. Estado actual: ${media.status}`,
-      );
+    if (!media) {
+      throw new NotFoundException('Media no encontrado');
     }
 
-    const uploadedChunks = await this.countUploadedChunks(mediaId);
-    console.log(`   - Chunks en disco: ${uploadedChunks}/${media.totalChunks}`);
-    
-    if (uploadedChunks !== media.totalChunks) {
-      throw new BadRequestException(
-        `Faltan chunks. Subidos: ${uploadedChunks}, Esperados: ${media.totalChunks}`,
-      );
+    if (media.uploadedChunks !== media.totalChunks) {
+      throw new BadRequestException(`Faltan chunks: ${media.uploadedChunks}/${media.totalChunks}`);
     }
 
     try {
-      // Cambiar estado a PROCESSING si no está ya en processing
       if (media.status !== MediaStatus.PROCESSING) {
-        media.status = MediaStatus.PROCESSING;
-        await this.mediaRepository.save(media);
+        await this.mediaRepository.update(mediaId, { status: MediaStatus.PROCESSING });
       }
 
-      // Ensamblar archivo si no existe ya
-      let finalFilePath = media.filePath;
-      if (!finalFilePath || !fs.existsSync(finalFilePath)) {
-        finalFilePath = await this.assembleFile(media);
-      } else {
-        console.log(`📁 Archivo ya existe en: ${finalFilePath}`);
+      const finalFilePath = path.join(this.uploadsDir, `${mediaId}${path.extname(media.originalName)}`);
+
+      if (!fs.existsSync(finalFilePath)) {
+        await this.assembleFile(mediaId, finalFilePath, media.totalChunks);
       }
+
+      const fileStats = fs.statSync(finalFilePath);
       
-      // Actualizar información del archivo
-      media.fileName = path.basename(finalFilePath);
-      media.filePath = finalFilePath;
-      media.status = MediaStatus.COMPLETED;
-
-      // Limpiar chunks
-      await this.cleanupChunks(mediaId);
-
-      const savedMedia = await this.mediaRepository.save(media);
-
-      // Publicar evento de upload completado para notificaciones
-      await this.redisService.publishNotificationEvent('upload_completed', {
-        mediaId: savedMedia.id,
-        userId: savedMedia.uploadedBy,
-        fileName: savedMedia.originalName,
-        fileSize: savedMedia.totalSize,
-        mediaType: savedMedia.type,
-        completedAt: new Date().toISOString()
+      await this.mediaRepository.update(mediaId, {
+        filePath: finalFilePath,
+        actualSize: fileStats.size,
+        status: MediaStatus.COMPLETED,
+        uploadedAt: new Date(),
       });
 
-      console.log(`✅ Upload completado exitosamente para media ${mediaId}`);
-      console.log(`   - Estado final: ${savedMedia.status}`);
-      console.log(`   - Archivo guardado en: ${savedMedia.filePath}`);
+      await this.cleanupChunks(mediaId);
 
-      return savedMedia;
+      await this.redisService.publishEvent('media_uploaded', {
+        mediaId: media.id,
+        userId: media.userId,
+        filename: media.originalName,
+        success: true
+      });
+
+      return await this.mediaRepository.findOne({ where: { id: mediaId } });
     } catch (error) {
-      media.status = MediaStatus.FAILED;
-      await this.mediaRepository.save(media);
-      throw new InternalServerErrorException(
-        `Error al completar upload: ${error.message}`,
-      );
+      await this.mediaRepository.update(mediaId, { status: MediaStatus.FAILED });
+      throw new BadRequestException(`Error al completar upload: ${error.message}`);
     }
   }
 
-  async findById(id: string): Promise<Media> {
-    const media = await this.mediaRepository.findOne({ where: { id } });
-    if (!media) {
-      throw new NotFoundException(`Media con ID ${id} no encontrado`);
-    }
-    return media;
-  }
-
-  async findByUserId(userId: string): Promise<Media[]> {
-    return await this.mediaRepository.find({
-      where: { uploadedBy: userId },
-      order: { createdAt: 'DESC' },
-    });
-  }
-
-  async deleteMedia(id: string, userId: string, token?: string): Promise<void> {
-    const media = await this.findMediaByIdAndUser(id, userId);
-
-    try {
-      // Eliminar comentarios relacionados primero
-      if (token) {
-        await this.commentsService.deleteCommentsByMediaId(id, token);
-      }
-
-      // Eliminar archivos físicos
-      if (media.filePath && fs.existsSync(media.filePath)) {
-        await fs.promises.unlink(media.filePath);
-      }
-
-      if (media.thumbnailPath && fs.existsSync(media.thumbnailPath)) {
-        await fs.promises.unlink(media.thumbnailPath);
-      }
-
-      // Limpiar chunks si existen
-      await this.cleanupChunks(id);
-
-      // Eliminar registro de la base de datos
-      await this.mediaRepository.delete(id);
-    } catch (error) {
-      throw new InternalServerErrorException(
-        `Error al eliminar media: ${error.message}`,
-      );
-    }
-  }
-
-  private async findMediaByIdAndUser(id: string, userId: string): Promise<Media> {
-    const media = await this.mediaRepository.findOne({
-      where: { id, uploadedBy: userId },
-    });
-
-    if (!media) {
-      throw new NotFoundException(
-        `Media con ID ${id} no encontrado o no tienes permisos`,
-      );
-    }
-
-    return media;
-  }
-
-  private async countUploadedChunks(mediaId: string): Promise<number> {
-    const chunkDir = path.join(this.chunksDir, mediaId);
+  /** Ensamblar archivo a partir de los chunks */
+  private async assembleFile(mediaId: string, outputPath: string, totalChunks: number): Promise<void> {
+    const writeStream = fs.createWriteStream(outputPath);
     
-    if (!fs.existsSync(chunkDir)) {
-      return 0;
-    }
-
-    const files = await fs.promises.readdir(chunkDir);
-    return files.filter(file => file.startsWith('chunk_')).length;
-  }
-
-  private async assembleFile(media: Media): Promise<string> {
-    const chunkDir = path.join(this.chunksDir, media.id);
-    const extension = this.getFileExtension(media.mimeType);
-    const finalFileName = `${uuidv4()}.${extension}`;
-    const finalFilePath = path.join(this.uploadsDir, finalFileName);
-
-    const writeStream = fs.createWriteStream(finalFilePath);
-
     try {
-      for (let i = 0; i < media.totalChunks; i++) {
-        const chunkPath = path.join(chunkDir, `chunk_${i}`);
+      for (let i = 0; i < totalChunks; i++) {
+        const chunkPath = path.join(this.chunksDir, mediaId, `chunk_${i}`);
         
         if (!fs.existsSync(chunkPath)) {
           throw new Error(`Chunk ${i} no encontrado`);
         }
 
-        const chunkData = await fs.promises.readFile(chunkPath);
+        const chunkData = fs.readFileSync(chunkPath);
         writeStream.write(chunkData);
       }
-
+      
       writeStream.end();
-      await new Promise<void>((resolve, reject) => {
-        writeStream.on('finish', () => resolve());
+      
+      await new Promise((resolve, reject) => {
+        writeStream.on('finish', resolve);
         writeStream.on('error', reject);
       });
-
-      return finalFilePath;
     } catch (error) {
-      // Limpiar archivo parcial si hay error
-      if (fs.existsSync(finalFilePath)) {
-        await fs.promises.unlink(finalFilePath);
+      writeStream.destroy();
+      if (fs.existsSync(outputPath)) {
+        fs.unlinkSync(outputPath);
       }
       throw error;
     }
   }
 
+  /** Limpiar chunks temporales después del ensamblado */
   private async cleanupChunks(mediaId: string): Promise<void> {
     const chunkDir = path.join(this.chunksDir, mediaId);
     
     if (fs.existsSync(chunkDir)) {
-      await fs.promises.rm(chunkDir, { recursive: true, force: true });
-    }
-  }
-
-  private ensureDirectoryExists(dirPath: string): void {
-    if (!fs.existsSync(dirPath)) {
-      fs.mkdirSync(dirPath, { recursive: true, mode: 0o755 });
-    }
-  }
-
-  private isValidMimeType(mimeType: string, mediaType: MediaType): boolean {
-    const validMimeTypes = {
-      [MediaType.IMAGE]: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
-      [MediaType.VIDEO]: ['video/mp4', 'video/avi', 'video/mkv', 'video/mov'],
-      [MediaType.AUDIO]: ['audio/mp3', 'audio/wav', 'audio/ogg', 'audio/m4a'],
-    };
-
-    return validMimeTypes[mediaType]?.includes(mimeType) || false;
-  }
-
-  private getFileExtension(mimeType: string): string {
-    const extension = mime.extension(mimeType);
-    return extension || 'bin';
-  }
-
-  // Método para testing: dividir archivo en chunks
-  async splitFileForTesting(
-    file: Express.Multer.File, 
-    numChunks: number
-  ): Promise<{
-    originalName: string;
-    originalSize: number;
-    totalChunks: number;
-    chunkSize: number;
-    chunks: {
-      chunkNumber: number;
-      size: number;
-      data: string;
-    }[];
-  }> {
-    const fileBuffer = file.buffer;
-    const totalSize = fileBuffer.length;
-    const chunkSize = Math.ceil(totalSize / numChunks);
-    
-    const chunks = [];
-    
-    for (let i = 0; i < numChunks; i++) {
-      const start = i * chunkSize;
-      const end = Math.min(start + chunkSize, totalSize);
-      const chunkBuffer = fileBuffer.slice(start, end);
-      
-      chunks.push({
-        chunkNumber: i,
-        size: chunkBuffer.length,
-        data: chunkBuffer.toString('base64'),
+      const files = fs.readdirSync(chunkDir);
+      files.forEach(file => {
+        fs.unlinkSync(path.join(chunkDir, file));
       });
+      fs.rmdirSync(chunkDir);
     }
-    
+  }
+
+  /** Eliminar media completo incluyendo archivos físicos */
+  async remove(id: string, userId: string): Promise<void> {
+    const media = await this.findOne(id, userId);
+
+    try {
+      await this.redisService.publishEvent('media_delete_comments', {
+        mediaId: id,
+        userId: userId
+      });
+
+      if (media.filePath && fs.existsSync(media.filePath)) {
+        fs.unlinkSync(media.filePath);
+      }
+
+      await this.cleanupChunks(id);
+
+      await this.mediaRepository.remove(media);
+    } catch (error) {
+      throw new BadRequestException(`Error al eliminar media: ${error.message}`);
+    }
+  }
+
+  /** Obtener un media específico del usuario */
+  async findOne(id: string, userId: string): Promise<Media> {
+    const media = await this.mediaRepository.findOne({
+      where: { id, userId },
+    });
+
+    if (!media) {
+      throw new NotFoundException(`Media con ID ${id} no encontrado`);
+    }
+
+    return media;
+  }
+
+  /** Obtener todos los medias del usuario */
+  async findAll(userId: string): Promise<Media[]> {
+    return await this.mediaRepository.find({
+      where: { userId },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  /** Obtener archivo para descarga/visualización */
+  async getFile(id: string, userId: string): Promise<{ filePath: string; mimeType: string; originalName: string }> {
+    const media = await this.findOne(id, userId);
+
+    if (media.status !== MediaStatus.COMPLETED) {
+      throw new BadRequestException('El archivo no está disponible para descarga');
+    }
+
+    if (!media.filePath || !fs.existsSync(media.filePath)) {
+      throw new NotFoundException('Archivo físico no encontrado');
+    }
+
     return {
-      originalName: file.originalname,
-      originalSize: totalSize,
-      totalChunks: numChunks,
-      chunkSize: chunkSize,
-      chunks: chunks,
+      filePath: media.filePath,
+      mimeType: media.mimeType,
+      originalName: media.originalName,
+    };
+  }
+
+  /** Obtener información de almacenamiento */
+  async getStorageInfo(): Promise<any> {
+    const uploadsExists = fs.existsSync(this.uploadsDir);
+    const chunksExists = fs.existsSync(this.chunksDir);
+
+    let uploadStats = { files: 0, sizeBytes: 0 };
+    let chunkStats = { files: 0, sizeBytes: 0 };
+
+    if (uploadsExists) {
+      const uploadFiles = fs.readdirSync(this.uploadsDir);
+      uploadStats.files = uploadFiles.length;
+      uploadStats.sizeBytes = uploadFiles.reduce((total, file) => {
+        const filePath = path.join(this.uploadsDir, file);
+        return total + fs.statSync(filePath).size;
+      }, 0);
+    }
+
+    if (chunksExists) {
+      const chunkDirs = fs.readdirSync(this.chunksDir);
+      chunkStats = chunkDirs.reduce((stats, dir) => {
+        const dirPath = path.join(this.chunksDir, dir);
+        if (fs.statSync(dirPath).isDirectory()) {
+          const files = fs.readdirSync(dirPath);
+          stats.files += files.length;
+          stats.sizeBytes += files.reduce((total, file) => {
+            return total + fs.statSync(path.join(dirPath, file)).size;
+          }, 0);
+        }
+        return stats;
+      }, { files: 0, sizeBytes: 0 });
+    }
+
+    const totalFiles = await this.mediaRepository.count();
+
+    return {
+      uploadsDir: this.uploadsDir,
+      chunksDir: this.chunksDir,
+      totalFiles,
+      diskUsage: {
+        uploads: uploadStats,
+        chunks: chunkStats,
+      },
+    };
+  }
+
+  /** Dividir archivo en chunks para testing */
+  async splitFileForTesting(file: Express.Multer.File, chunks: number): Promise<{ chunks: string[], metadata: any }> {
+    const chunkSize = Math.ceil(file.buffer.length / chunks);
+    const splitChunks: string[] = [];
+
+    for (let i = 0; i < chunks; i++) {
+      const start = i * chunkSize;
+      const end = Math.min(start + chunkSize, file.buffer.length);
+      const chunkBuffer = file.buffer.slice(start, end);
+      const base64Chunk = chunkBuffer.toString('base64');
+      splitChunks.push(base64Chunk);
+    }
+
+    return {
+      chunks: splitChunks,
+      metadata: {
+        originalName: file.originalname,
+        mimeType: file.mimetype,
+        totalSize: file.buffer.length,
+        totalChunks: chunks,
+        chunkSize,
+      },
     };
   }
 
   // Métodos para servir archivos
   async getFileStream(id: string, userId: string): Promise<{ stream: fs.ReadStream; media: Media }> {
-    const media = await this.findMediaByIdAndUser(id, userId);
+    const media = await this.findOne(id, userId);
     
     if (media.status !== MediaStatus.COMPLETED) {
       throw new BadRequestException(
@@ -379,7 +362,7 @@ export class MediaService {
   }
 
   async getFileBuffer(id: string, userId: string): Promise<{ buffer: Buffer; media: Media }> {
-    const media = await this.findMediaByIdAndUser(id, userId);
+    const media = await this.findOne(id, userId);
     
     if (media.status !== MediaStatus.COMPLETED) {
       throw new BadRequestException(
@@ -393,53 +376,5 @@ export class MediaService {
 
     const buffer = await fs.promises.readFile(media.filePath);
     return { buffer, media };
-  }
-
-  async getStorageInfo(): Promise<{
-    uploadsDir: string;
-    chunksDir: string;
-    totalFiles: number;
-    diskUsage: {
-      uploads: { files: number; sizeBytes: number };
-      chunks: { files: number; sizeBytes: number };
-    };
-  }> {
-    const uploadsInfo = await this.getDirectoryInfo(this.uploadsDir);
-    const chunksInfo = await this.getDirectoryInfo(this.chunksDir);
-    
-    const totalFiles = await this.mediaRepository.count({
-      where: { status: MediaStatus.COMPLETED }
-    });
-
-    return {
-      uploadsDir: path.resolve(this.uploadsDir),
-      chunksDir: path.resolve(this.chunksDir),
-      totalFiles,
-      diskUsage: {
-        uploads: uploadsInfo,
-        chunks: chunksInfo,
-      },
-    };
-  }
-
-  private async getDirectoryInfo(dirPath: string): Promise<{ files: number; sizeBytes: number }> {
-    if (!fs.existsSync(dirPath)) {
-      return { files: 0, sizeBytes: 0 };
-    }
-
-    const files = await fs.promises.readdir(dirPath, { withFileTypes: true });
-    let totalFiles = 0;
-    let totalSize = 0;
-
-    for (const file of files) {
-      if (file.isFile()) {
-        totalFiles++;
-        const filePath = path.join(dirPath, file.name);
-        const stats = await fs.promises.stat(filePath);
-        totalSize += stats.size;
-      }
-    }
-
-    return { files: totalFiles, sizeBytes: totalSize };
   }
 } 

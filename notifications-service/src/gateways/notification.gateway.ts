@@ -13,6 +13,8 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { RedisConfig } from '../config/redis.config';
 import { NotificationService } from '../services/notification.service';
+import { NotificationFiltersDto } from '../dto/notification-filters.dto';
+import { MarkAsReadDto } from '../dto/update-notification.dto';
 
 interface AuthenticatedSocket extends Socket {
   userId?: string;
@@ -43,6 +45,7 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
     this.initializeRedisSubscription();
   }
 
+  /** Validar conexión WebSocket con autenticación JWT */
   async handleConnection(client: AuthenticatedSocket) {
     try {
       this.logger.log(`Cliente conectando: ${client.id}`);
@@ -86,6 +89,7 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
     }
   }
 
+  /** Limpiar datos al desconectar cliente */
   async handleDisconnect(client: AuthenticatedSocket) {
     if (client.userId) {
       await this.redisConfig.removeUserConnection(client.userId, client.id);
@@ -95,6 +99,7 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
     }
   }
 
+  /** Unir cliente a sala de notificaciones del usuario */
   @SubscribeMessage('join_notifications')
   async handleJoinNotifications(@ConnectedSocket() client: AuthenticatedSocket) {
     if (client.userId) {
@@ -107,6 +112,26 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
     }
   }
 
+  /** Obtener notificaciones con filtros */
+  @SubscribeMessage('get_notifications')
+  async handleGetNotifications(
+    @ConnectedSocket() client: AuthenticatedSocket,
+    @MessageBody() filters: NotificationFiltersDto
+  ) {
+    if (!client.userId) {
+      client.emit('error', { message: 'No autenticado' });
+      return;
+    }
+
+    try {
+      const result = await this.notificationService.findAll(client.userId, filters);
+      client.emit('notifications', result);
+    } catch (error) {
+      client.emit('error', { message: 'Error al obtener notificaciones' });
+    }
+  }
+
+  /** Marcar notificaciones como leídas */
   @SubscribeMessage('mark_as_read')
   async handleMarkAsRead(
     @ConnectedSocket() client: AuthenticatedSocket,
@@ -130,25 +155,7 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
     }
   }
 
-  @SubscribeMessage('get_notifications')
-  async handleGetNotifications(
-    @ConnectedSocket() client: AuthenticatedSocket,
-    @MessageBody() filters: any
-  ) {
-    if (!client.userId) {
-      client.emit('error', { message: 'No autenticado' });
-      return;
-    }
-
-    try {
-      const result = await this.notificationService.findAll(client.userId, filters);
-      client.emit('notifications', result);
-    } catch (error) {
-      client.emit('error', { message: 'Error al obtener notificaciones' });
-    }
-  }
-
-  // Método para enviar notificación a usuario específico
+  /** Enviar notificación en tiempo real a usuario específico */
   async sendNotificationToUser(userId: string, notification: any) {
     const room = `user_${userId}`;
     this.server.to(room).emit('new_notification', notification);
@@ -158,14 +165,14 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
     this.server.to(room).emit('unread_count', { count: unreadCount });
   }
 
-  // Método para enviar notificación a múltiples usuarios
+  /** Enviar notificación a múltiples usuarios */
   async sendNotificationToUsers(userIds: string[], notification: any) {
     for (const userId of userIds) {
       await this.sendNotificationToUser(userId, notification);
     }
   }
 
-  // Método para broadcast a todos los usuarios conectados
+  /** Enviar mensaje broadcast a todos los usuarios conectados */
   async broadcastNotification(notification: any) {
     this.server.emit('broadcast_notification', notification);
   }
@@ -223,6 +230,4 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
       }
     });
   }
-
-
 } 

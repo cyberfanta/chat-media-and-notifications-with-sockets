@@ -6,58 +6,37 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // Configurar CORS
   app.enableCors({
-    origin: process.env.CORS_ORIGIN || '*',
-    methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With'],
+    origin: '*',
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
-    exposedHeaders: ['Content-Range', 'Accept-Ranges'],
   });
 
-  // Configurar validación global
   app.useGlobalPipes(
     new ValidationPipe({
+      transform: true,
       whitelist: true,
       forbidNonWhitelisted: true,
-      transform: true,
-      transformOptions: {
-        enableImplicitConversion: true,
-      },
     }),
   );
 
-  // Configurar Swagger
   const config = new DocumentBuilder()
     .setTitle('Comments Service API')
-    .setDescription('API para gestión de comentarios en contenido multimedia')
+    .setDescription('Microservicio de comentarios con moderación y sistema jerárquico')
     .setVersion('1.0')
-    .addBearerAuth(
-      {
-        type: 'http',
-        scheme: 'bearer',
-        bearerFormat: 'JWT',
-        name: 'JWT',
-        description: 'Ingrese el token JWT',
-        in: 'header',
-      },
-      'JWT-auth',
-    )
-    .addTag('Comments', 'Endpoints para gestión de comentarios')
+    .addBearerAuth()
+    .addTag('comments', 'Gestión de comentarios')
+    .addTag('moderation', 'Moderación de comentarios')
+    .addTag('health', 'Estado del servicio')
     .build();
 
   const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api/docs', app, document, {
-    swaggerOptions: {
-      persistAuthorization: true,
-    },
-  });
+  SwaggerModule.setup('api/docs', app, document);
 
-  const port = process.env.PORT || 3000;
+  const port = process.env.PORT || 5902;
   await app.listen(port);
-
-  console.log(`🚀 Comments Service ejecutándose en puerto ${port}`);
-  console.log(`📚 Documentación Swagger disponible en: http://localhost:${port}/api/docs`);
+  console.log(`💬 Comments Service ejecutándose en puerto ${port}`);
+  console.log(`📖 Documentación Swagger: http://localhost:${port}/api/docs`);
 }
 
 bootstrap(); 

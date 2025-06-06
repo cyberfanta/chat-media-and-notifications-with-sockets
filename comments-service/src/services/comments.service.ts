@@ -38,9 +38,9 @@ export class CommentsService {
     private redisService: RedisService,
   ) {}
 
+  /** Crear un nuevo comentario o respuesta */
   async create(createCommentDto: CreateCommentDto, userId: string, userEmail: string): Promise<Comment> {
     try {
-      // Verificar que el comentario padre existe si se proporciona
       if (createCommentDto.parentId) {
         const parentComment = await this.commentRepository.findOne({
           where: { id: createCommentDto.parentId },
@@ -50,7 +50,6 @@ export class CommentsService {
           throw new BadRequestException('Comentario padre no encontrado');
         }
 
-        // Verificar que el comentario padre está en el mismo contenido
         if (parentComment.contentId !== createCommentDto.contentId) {
           throw new BadRequestException('El comentario padre debe estar en el mismo contenido');
         }
@@ -60,13 +59,12 @@ export class CommentsService {
         ...createCommentDto,
         userId,
         userEmail,
-        status: CommentStatus.PENDING, // Todos los comentarios inician pendientes
+        status: CommentStatus.PENDING,
       });
 
       const savedComment = await this.commentRepository.save(comment);
       this.logger.log(`Comment created: ${savedComment.id} by user: ${userId}`);
       
-      // Publicar evento de nuevo comentario para notificaciones
       try {
         await this.redisService.publishNotificationEvent('new_comment', {
           commentId: savedComment.id,
@@ -89,6 +87,7 @@ export class CommentsService {
     }
   }
 
+  /** Obtener comentarios de un contenido con paginación y filtros */
   async findByContentId(contentId: string, query: QueryCommentsDto): Promise<PaginatedComments> {
     try {
       const { page = 1, limit, sortBy, sortOrder, status, userId, parentId, topLevelOnly, cursor, useCursor } = query;
@@ -97,12 +96,10 @@ export class CommentsService {
         return this.findByContentIdWithCursor(contentId, query);
       }
       
-      // Fallback a paginación offset-based tradicional
       const queryBuilder = this.commentRepository
         .createQueryBuilder('comment')
         .where('comment.contentId = :contentId', { contentId });
 
-      // Aplicar filtros
       if (status) {
         queryBuilder.andWhere('comment.status = :status', { status });
       }
@@ -119,7 +116,6 @@ export class CommentsService {
         queryBuilder.andWhere('comment.parentId IS NULL');
       }
 
-      // Aplicar ordenamiento
       let orderField = 'comment.createdAt';
       if (sortBy === CommentSortBy.UPDATED_AT) {
         orderField = 'comment.updatedAt';
@@ -129,7 +125,6 @@ export class CommentsService {
 
       queryBuilder.orderBy(orderField, sortOrder);
 
-      // Aplicar paginación offset-based
       const skip = (page - 1) * limit;
       queryBuilder.skip(skip).take(limit);
 
@@ -164,7 +159,6 @@ export class CommentsService {
       .createQueryBuilder('comment')
       .where('comment.contentId = :contentId', { contentId });
 
-    // Aplicar filtros
     if (status) {
       queryBuilder.andWhere('comment.status = :status', { status });
     }
@@ -180,8 +174,6 @@ export class CommentsService {
     if (topLevelOnly) {
       queryBuilder.andWhere('comment.parentId IS NULL');
     }
-
-    // Determinar el campo de ordenamiento
     let orderField = 'comment.createdAt';
     let orderFieldAlias = 'createdAt';
     if (sortBy === CommentSortBy.UPDATED_AT) {
@@ -192,9 +184,7 @@ export class CommentsService {
       orderFieldAlias = 'likes';
     }
 
-    // Aplicar cursor si existe
     if (cursor) {
-      // Obtener el valor del campo de ordenamiento del comentario cursor
       const cursorComment = await this.commentRepository.findOne({ 
         where: { id: cursor },
         select: ['id', orderFieldAlias as keyof Comment] 
@@ -204,13 +194,11 @@ export class CommentsService {
         const cursorValue = cursorComment[orderFieldAlias];
         
         if (sortOrder === SortOrder.DESC) {
-          // Para orden descendente, necesitamos comentarios con valores menores al cursor
           queryBuilder.andWhere(`${orderField} < :cursorValue OR (${orderField} = :cursorValue AND comment.id < :cursorId)`, {
             cursorValue,
             cursorId: cursor
           });
         } else {
-          // Para orden ascendente, necesitamos comentarios con valores mayores al cursor
           queryBuilder.andWhere(`${orderField} > :cursorValue OR (${orderField} = :cursorValue AND comment.id > :cursorId)`, {
             cursorValue,
             cursorId: cursor
@@ -219,35 +207,27 @@ export class CommentsService {
       }
     }
 
-    // Aplicar ordenamiento (siempre incluir ID como campo secundario para consistencia)
     queryBuilder.orderBy(orderField, sortOrder);
     queryBuilder.addOrderBy('comment.id', sortOrder);
 
-    // Obtener un elemento extra para determinar si hay más páginas
     queryBuilder.take(limit + 1);
 
     const comments = await queryBuilder.getMany();
     const hasNext = comments.length > limit;
     
-    // Si hay más comentarios, remover el extra
     if (hasNext) {
       comments.pop();
     }
 
-    // Determinar cursors para navegación
     const nextCursor = hasNext && comments.length > 0 ? comments[comments.length - 1].id : undefined;
-    const hasPrev = !!cursor; // Si hay cursor, significa que hay página previa
+    const hasPrev = !!cursor;
 
-    // Para obtener el cursor previo, necesitaríamos hacer una consulta inversa
-    // Por simplicidad, solo indicamos si hay página previa
-    const prevCursor = hasPrev ? null : undefined; // Se puede implementar si es necesario
+    const prevCursor = hasPrev ? null : undefined;
 
-    // Obtener total aproximado (puede ser costoso para grandes datasets)
     const totalQueryBuilder = this.commentRepository
       .createQueryBuilder('comment')
       .where('comment.contentId = :contentId', { contentId });
     
-    // Aplicar los mismos filtros para el conteo
     if (status) {
       totalQueryBuilder.andWhere('comment.status = :status', { status });
     }
@@ -287,24 +267,22 @@ export class CommentsService {
     return comment;
   }
 
+  /** Actualizar un comentario propio */
   async update(id: string, updateCommentDto: UpdateCommentDto, userId: string): Promise<Comment> {
     try {
       const comment = await this.findById(id);
 
-      // Verificar que el usuario es el propietario del comentario
       if (comment.userId !== userId) {
         throw new ForbiddenException('No tienes permisos para editar este comentario');
       }
 
-      // Solo se pueden editar comentarios aprobados
       if (comment.status !== CommentStatus.APPROVED) {
         throw new BadRequestException('Solo se pueden editar comentarios aprobados');
       }
 
-      // Actualizar el comentario
       Object.assign(comment, updateCommentDto);
       comment.isEdited = true;
-      comment.status = CommentStatus.PENDING; // Vuelve a moderación después de editar
+      comment.status = CommentStatus.PENDING;
 
       const savedComment = await this.commentRepository.save(comment);
       this.logger.log(`Comment updated: ${savedComment.id} by user: ${userId}`);
@@ -316,16 +294,16 @@ export class CommentsService {
     }
   }
 
+  /** Eliminar un comentario propio y todas sus respuestas */
+  /** Eliminar un comentario propio y todas sus respuestas */
   async delete(id: string, userId: string): Promise<void> {
     try {
       const comment = await this.findById(id);
 
-      // Verificar que el usuario es el propietario del comentario
       if (comment.userId !== userId) {
         throw new ForbiddenException('No tienes permisos para eliminar este comentario');
       }
 
-      // Eliminar comentario y sus respuestas
       await this.deleteCommentAndReplies(id);
       
       this.logger.log(`Comment deleted: ${id} by user: ${userId}`);
