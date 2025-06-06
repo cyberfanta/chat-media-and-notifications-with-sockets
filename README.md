@@ -47,6 +47,110 @@ Sistema completo de gestión de contenido multimedia con microservicios de auten
 - ✅ Docker y Docker Compose
 - ✅ Arquitectura de microservicios
 
+## 🏗️ Arquitectura del Sistema
+
+```mermaid
+graph TB
+    subgraph "🌐 Cliente"
+        WEB[Cliente Web]
+        MOBILE[Cliente Móvil]
+        POSTMAN[Postman/API]
+    end
+    
+    subgraph "🚪 Gateway/Load Balancer"
+        LB[Load Balancer<br/>Puerto 80/443]
+    end
+    
+    subgraph "🏗️ Microservicios Backend"
+        AUTH[🔐 Auth Service<br/>Puerto 5900<br/>JWT + Roles]
+        MEDIA[📁 Media Service<br/>Puerto 5901<br/>Upload + Storage]
+        COMMENTS[💬 Comments Service<br/>Puerto 5902<br/>Threading + Moderation]
+        NOTIFY[🔔 Notifications Service<br/>Puerto 5903<br/>WebSocket + Real-time]
+    end
+    
+    subgraph "🗄️ Bases de Datos"
+        PGAUTH[(PostgreSQL Auth<br/>Puerto 5432)]
+        PGMEDIA[(PostgreSQL Media<br/>Puerto 5433)]
+        PGCOMMENTS[(PostgreSQL Comments<br/>Puerto 5434)]
+        PGNOTIFY[(PostgreSQL Notifications<br/>Puerto 5435)]
+    end
+    
+    subgraph "⚡ Cache y Mensajería"
+        REDIS1[(Redis Auth<br/>Puerto 6379<br/>Sessions + Cache)]
+        REDIS2[(Redis Notifications<br/>Puerto 6380<br/>Pub/Sub + Queue)]
+    end
+    
+    subgraph "🛠️ Herramientas de Desarrollo"
+        PGADMIN[pgAdmin<br/>Puerto 5050]
+        SWAGGER[Swagger Docs<br/>Puertos 590X/api/docs]
+        WSTEST[WebSocket Test Client<br/>Puerto 8080]
+    end
+    
+    subgraph "💾 Almacenamiento"
+        STORAGE[Local Storage<br/>./uploads/]
+        CHUNKS[Chunks Temp<br/>./uploads/chunks/]
+    end
+    
+    %% Conexiones principales
+    WEB --> LB
+    MOBILE --> LB
+    POSTMAN --> LB
+    
+    LB --> AUTH
+    LB --> MEDIA
+    LB --> COMMENTS
+    LB --> NOTIFY
+    
+    %% Conexiones a bases de datos
+    AUTH --> PGAUTH
+    MEDIA --> PGMEDIA
+    COMMENTS --> PGCOMMENTS
+    NOTIFY --> PGNOTIFY
+    
+    %% Conexiones a Redis
+    AUTH --> REDIS1
+    NOTIFY --> REDIS1
+    NOTIFY --> REDIS2
+    
+    %% Conexiones entre servicios
+    MEDIA --> AUTH
+    COMMENTS --> AUTH
+    NOTIFY --> AUTH
+    
+    %% Pub/Sub para notificaciones automáticas
+    AUTH -.->|Publish Events| REDIS2
+    MEDIA -.->|Publish Events| REDIS2
+    COMMENTS -.->|Publish Events| REDIS2
+    REDIS2 -.->|Subscribe Events| NOTIFY
+    
+    %% WebSocket en tiempo real
+    WEB -.->|WebSocket| NOTIFY
+    MOBILE -.->|WebSocket| NOTIFY
+    
+    %% Almacenamiento
+    MEDIA --> STORAGE
+    MEDIA --> CHUNKS
+    
+    %% Herramientas
+    PGADMIN --> PGAUTH
+    PGADMIN --> PGMEDIA
+    PGADMIN --> PGCOMMENTS
+    PGADMIN --> PGNOTIFY
+    
+    %% Estilos
+    classDef service fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+    classDef database fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    classDef cache fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    classDef client fill:#e8f5e8,stroke:#2e7d32,stroke-width:2px
+    classDef tool fill:#fff8e1,stroke:#f57f17,stroke-width:2px
+    
+    class AUTH,MEDIA,COMMENTS,NOTIFY service
+    class PGAUTH,PGMEDIA,PGCOMMENTS,PGNOTIFY database
+    class REDIS1,REDIS2 cache
+    class WEB,MOBILE,POSTMAN client
+    class PGADMIN,SWAGGER,WSTEST tool
+```
+
 ## 🛠️ Tecnologías
 
 - **Framework**: NestJS con TypeScript
@@ -136,6 +240,7 @@ docker-compose down -v
 - **[Colección de Postman](https://github.com/cyberfanta/chat-media-and-notifications-with-sockets/blob/main/docs/postman-collection.md)** - Colección completa para importar en Postman
 - **[Validación Swagger](https://github.com/cyberfanta/chat-media-and-notifications-with-sockets/blob/main/docs/validate-swagger.md)** - Herramientas para validar documentación API
 - **[Optimización Docker](https://github.com/cyberfanta/chat-media-and-notifications-with-sockets/blob/main/docs/docker-optimization.md)** - Mejores prácticas para contenedores
+- **[Índice de Diagramas](https://github.com/cyberfanta/chat-media-and-notifications-with-sockets/blob/main/docs/diagramas.md)** - Todos los diagramas visuales del sistema
 
 ### 📋 Información Adicional
 - **[Tipos de Notificaciones](https://github.com/cyberfanta/chat-media-and-notifications-with-sockets/blob/main/docs/notificaciones.md)** - Tipos y configuración de notificaciones
@@ -225,7 +330,7 @@ Este proyecto está licenciado bajo la Licencia MIT con requisitos de atribució
 
 ## ✒️ Autor
 
-**Julio César León** - *Developer* - [GitHub Profile](https://github.com/cyberfanta)
+**Julio César León** - *Senior Fullstack Developer* - [GitHub Profile](https://github.com/cyberfanta)
 
 **Enlace del Proyecto**: [Chat Media and Notifications with Sockets](https://github.com/cyberfanta/chat-media-and-notifications-with-sockets)
 

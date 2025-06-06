@@ -18,33 +18,69 @@
 
 ## 🏗️ **Arquitectura del Sistema de Notificaciones**
 
-```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Auth Service  │    │  Media Service  │    │Comments Service │
-│    (puerto     │    │   (puerto      │    │   (puerto      │
-│     5900)      │    │    5901)       │    │    5902)       │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-         │                       │                       │
-         │                       │                       │
-         ▼                       ▼                       ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                 Redis Pub/Sub Channel                         │
-│              'notification_events'                           │
-└─────────────────────────────────────────────────────────────────┘
-                                │
-                                ▼
-┌─────────────────────────────────────────────────────────────────┐
-│           Notifications Service (puerto 5903)                 │
-│  • Escucha eventos de Redis                                   │
-│  • Crea notificaciones en base de datos                      │
-│  • Envía via Socket.IO a usuarios conectados                 │
-└─────────────────────────────────────────────────────────────────┘
-                                │
-                                ▼
-┌─────────────────────────────────────────────────────────────────┐
-│               Usuarios Conectados via Socket.IO               │
-│                   (puerto 5903/notifications)                 │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+sequenceDiagram
+    participant U as 👤 Usuario
+    participant WS as 🌐 Cliente WebSocket
+    participant NS as 🔔 Notifications Service
+    participant R as ⚡ Redis Pub/Sub
+    participant DB as 🗄️ PostgreSQL
+    participant AS as 🔐 Auth Service
+    participant MS as 📁 Media Service
+    participant CS as 💬 Comments Service
+    
+    Note over U,CS: Flujo de Notificaciones en Tiempo Real
+    
+    %% Conexión inicial
+    U->>WS: Abrir aplicación
+    WS->>NS: Conectar WebSocket + JWT Token
+    NS->>AS: Validar JWT Token
+    AS-->>NS: Usuario autenticado
+    NS->>WS: Conexión establecida
+    NS->>R: Suscribirse a eventos del usuario
+    
+    %% Acción que genera notificación
+    U->>MS: Subir archivo multimedia
+    MS->>DB: Guardar metadata del archivo
+    MS->>R: Publish "media.uploaded" event
+    
+    %% Procesamiento de notificación
+    R->>NS: Event "media.uploaded" recibido
+    NS->>DB: Crear notificación en BD
+    NS->>R: Cache notificación no leída
+    NS->>WS: Enviar notificación en tiempo real
+    WS->>U: Mostrar notificación "Upload completado"
+    
+    Note over U,CS: Ejemplo con Comentarios
+    
+    %% Usuario 2 comenta
+    participant U2 as 👤 Usuario 2
+    participant WS2 as 🌐 Cliente 2
+    
+    U2->>CS: Crear comentario en contenido
+    CS->>DB: Guardar comentario
+    CS->>R: Publish "comment.created" event
+    
+    %% Notificación al propietario del contenido
+    R->>NS: Event "comment.created" recibido
+    NS->>DB: Crear notificación para propietario
+    NS->>R: Cache notificación
+    
+    alt Usuario conectado
+        NS->>WS: Enviar notificación en tiempo real
+        WS->>U: Mostrar "Nuevo comentario"
+    else Usuario desconectado
+        NS->>DB: Notificación queda pendiente
+        Note right of DB: Se enviará cuando<br/>el usuario se conecte
+    end
+    
+    Note over U,CS: Gestión de Estados
+    
+    U->>WS: Marcar notificación como leída
+    WS->>NS: mark_as_read event
+    NS->>DB: Actualizar isRead = true
+    NS->>R: Invalidar cache
+    NS->>WS: Confirmación de lectura
 ```
 
 ## 🔄 **Flujo Completo (Cuando Funcione)**

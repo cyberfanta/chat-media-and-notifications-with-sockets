@@ -1,5 +1,105 @@
 # 🔔 Guía Completa para Probar WebSockets - Notifications Service
 
+## 🏗️ Diagrama de Testing
+
+```mermaid
+graph TB
+    subgraph "🧪 Testing Ecosystem"
+        subgraph "📝 Unit Tests"
+            JEST[Jest Test Runner]
+            AUTH_UNIT[Auth Service Tests<br/>15 tests - 75% coverage]
+            MEDIA_UNIT[Media Service Tests<br/>26 tests - 85% coverage]
+            COMMENT_UNIT[Comments Service Tests<br/>12 tests - 70% coverage]
+            NOTIF_UNIT[Notifications Tests<br/>8 tests - 65% coverage]
+        end
+        
+        subgraph "🔗 Integration Tests"
+            AUTH_INT[test-auth-integration.js<br/>- Register/Login flow<br/>- JWT validation<br/>- Role promotion]
+            MEDIA_INT[test-file-management.js<br/>- Multipart upload<br/>- Chunk processing<br/>- File operations]
+            COMMENT_INT[test-comments-service.js<br/>- CRUD operations<br/>- Moderation flow<br/>- Threading]
+            SIMPLE_TESTS[test-simple-*.js<br/>- Basic endpoints<br/>- Quick validation]
+        end
+        
+        subgraph "📡 WebSocket Tests"
+            WS_CLIENT[WebSocket Test Client<br/>:8080 - Visual Interface]
+            WS_COMMANDS[test-websocket-commands.md<br/>Manual testing guide]
+            AUTO_WS[Automated WS Tests<br/>Socket.IO client tests]
+        end
+        
+        subgraph "📮 API Testing"
+            POSTMAN[Postman Collection<br/>JSON v2.1 format]
+            CURL_SCRIPTS[cURL Examples<br/>In documentation]
+            SWAGGER_UI[Swagger UI<br/>Interactive testing]
+        end
+    end
+    
+    subgraph "🐳 Docker Test Environment"
+        AUTH_CONTAINER[auth-service<br/>:5900]
+        MEDIA_CONTAINER[media-service<br/>:5901]
+        COMMENT_CONTAINER[comments-service<br/>:5902]
+        NOTIF_CONTAINER[notifications-service<br/>:5903]
+        
+        PG_AUTH[(PostgreSQL Auth<br/>:5432)]
+        PG_MEDIA[(PostgreSQL Media<br/>:5433)]
+        PG_COMMENT[(PostgreSQL Comments<br/>:5434)]
+        PG_NOTIF[(PostgreSQL Notifications<br/>:5435)]
+        
+        REDIS_AUTH[(Redis Auth<br/>:6379)]
+        REDIS_NOTIF[(Redis Notifications<br/>:6380)]
+    end
+    
+    %% Unit Tests Flow
+    JEST --> AUTH_UNIT
+    JEST --> MEDIA_UNIT
+    JEST --> COMMENT_UNIT
+    JEST --> NOTIF_UNIT
+    
+    %% Integration Tests Flow
+    AUTH_INT --> AUTH_CONTAINER
+    MEDIA_INT --> MEDIA_CONTAINER
+    COMMENT_INT --> COMMENT_CONTAINER
+    
+    %% WebSocket Tests Flow
+    WS_CLIENT --> NOTIF_CONTAINER
+    AUTO_WS --> NOTIF_CONTAINER
+    
+    %% API Testing Flow
+    POSTMAN --> AUTH_CONTAINER
+    POSTMAN --> MEDIA_CONTAINER
+    POSTMAN --> COMMENT_CONTAINER
+    POSTMAN --> NOTIF_CONTAINER
+    
+    SWAGGER_UI --> AUTH_CONTAINER
+    SWAGGER_UI --> MEDIA_CONTAINER
+    SWAGGER_UI --> COMMENT_CONTAINER
+    SWAGGER_UI --> NOTIF_CONTAINER
+    
+    %% Database Connections
+    AUTH_CONTAINER --> PG_AUTH
+    MEDIA_CONTAINER --> PG_MEDIA
+    COMMENT_CONTAINER --> PG_COMMENT
+    NOTIF_CONTAINER --> PG_NOTIF
+    
+    AUTH_CONTAINER --> REDIS_AUTH
+    NOTIF_CONTAINER --> REDIS_AUTH
+    NOTIF_CONTAINER --> REDIS_NOTIF
+    
+    %% Estilos
+    classDef unittest fill:#e8f5e8,stroke:#2e7d32,stroke-width:2px
+    classDef integration fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    classDef websocket fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef api fill:#fff3e0,stroke:#ef6c00,stroke-width:2px
+    classDef service fill:#ffebee,stroke:#c62828,stroke-width:2px
+    classDef database fill:#f1f8e9,stroke:#558b2f,stroke-width:2px
+    
+    class JEST,AUTH_UNIT,MEDIA_UNIT,COMMENT_UNIT,NOTIF_UNIT unittest
+    class AUTH_INT,MEDIA_INT,COMMENT_INT,SIMPLE_TESTS integration
+    class WS_CLIENT,WS_COMMANDS,AUTO_WS websocket
+    class POSTMAN,CURL_SCRIPTS,SWAGGER_UI api
+    class AUTH_CONTAINER,MEDIA_CONTAINER,COMMENT_CONTAINER,NOTIF_CONTAINER service
+    class PG_AUTH,PG_MEDIA,PG_COMMENT,PG_NOTIF,REDIS_AUTH,REDIS_NOTIF database
+```
+
 ## 🚀 Inicio Rápido
 
 ### 1. **Acceder al Cliente de Testing**

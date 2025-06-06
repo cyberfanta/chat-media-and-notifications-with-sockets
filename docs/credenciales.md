@@ -70,6 +70,75 @@ Información completa sobre las credenciales de acceso a bases de datos y config
 - **Issuer**: `auth-service`
 - **Audience**: `media-platform`
 
+## 🔄 Diagrama de Autenticación
+
+```mermaid
+sequenceDiagram
+    participant U as 👤 Usuario
+    participant C as 🌐 Cliente
+    participant AS as 🔐 Auth Service
+    participant DB as 🗄️ PostgreSQL Auth
+    participant R as ⚡ Redis Cache
+    participant MS as 📁 Media Service
+    participant CS as 💬 Comments Service
+    participant NS as 🔔 Notifications Service
+    
+    Note over U,NS: Flujo de Autenticación Completo
+    
+    %% Registro
+    U->>C: Llenar formulario registro
+    C->>AS: POST /auth/register
+    AS->>DB: Verificar email único
+    AS->>DB: Hash password (bcrypt)
+    AS->>DB: Crear usuario (role: USER)
+    AS-->>C: Usuario creado exitosamente
+    
+    %% Login
+    U->>C: Ingresar credenciales
+    C->>AS: POST /auth/login
+    AS->>DB: Buscar usuario por email
+    AS->>AS: Verificar password
+    AS->>AS: Generar JWT Token
+    Note right of AS: JWT Payload:<br/>- userId<br/>- email<br/>- role<br/>- exp: 24h
+    AS->>R: Cache session info (opcional)
+    AS-->>C: JWT Token + User Info
+    C->>C: Guardar token en localStorage
+    
+    %% Uso del token en otros servicios
+    Note over U,NS: Uso del Token en Microservicios
+    
+    U->>C: Subir archivo
+    C->>MS: POST /media/init-upload + JWT Header
+    MS->>AS: Validar JWT Token (middleware)
+    AS-->>MS: Token válido + User Info
+    MS->>MS: Procesar request autorizado
+    MS-->>C: Upload inicializado
+    
+    U->>C: Crear comentario
+    C->>CS: POST /comments + JWT Header
+    CS->>AS: Validar JWT Token
+    AS-->>CS: Token válido + User Info
+    CS->>CS: Verificar permisos de rol
+    CS-->>C: Comentario creado
+    
+    U->>C: Conectar WebSocket
+    C->>NS: WebSocket + JWT en query/header
+    NS->>AS: Validar JWT Token
+    AS-->>NS: Token válido + User Info
+    NS->>NS: Agregar a sala personal
+    NS-->>C: WebSocket conectado
+    
+    %% Refresh Token
+    Note over U,AS: Renovación de Token
+    
+    C->>C: Detectar token próximo a expirar
+    C->>AS: POST /auth/refresh + JWT Header
+    AS->>AS: Validar token actual
+    AS->>AS: Generar nuevo JWT
+    AS-->>C: Nuevo JWT Token
+    C->>C: Actualizar token guardado
+```
+
 ### Estructura del Token JWT
 ```json
 {

@@ -5,12 +5,126 @@ Documentación completa del sistema de notificaciones en tiempo real de la plata
 ## 📋 Contenido
 
 - [Tipos de Notificaciones](#tipos-de-notificaciones)
+- [Diagrama de Arquitectura WebSocket](#diagrama-de-arquitectura-websocket)
 - [Configuración de Notificaciones](#configuración-de-notificaciones)
 - [Gestión de Estados](#gestión-de-estados)
 - [Prioridades](#prioridades)
 - [Metadata y Personalización](#metadata-y-personalización)
 - [Rate Limiting](#rate-limiting)
 - [Cache y Performance](#cache-y-performance)
+
+## 🏗️ Diagrama de Arquitectura WebSocket
+
+```mermaid
+graph TB
+    subgraph "🌐 Clientes"
+        WEB1[Cliente Web 1<br/>Chrome]
+        WEB2[Cliente Web 2<br/>Firefox]
+        MOBILE[Cliente Móvil<br/>Flutter]
+        TEST[Test Client<br/>:8080]
+    end
+    
+    subgraph "🔔 Notifications Service :5903"
+        GATEWAY[Socket.IO Gateway<br/>Auth Middleware]
+        
+        subgraph "👤 Salas de Usuario"
+            ROOM1[Sala user-123<br/>WEB1, MOBILE]
+            ROOM2[Sala user-456<br/>WEB2]
+            ROOM3[Sala user-789<br/>Vacía]
+        end
+        
+        subgraph "📨 Event Handlers"
+            JOIN[join_notifications]
+            GET[get_notifications]
+            MARK[mark_as_read]
+            EMIT[emit_notification]
+        end
+        
+        subgraph "🏗️ Service Layer"
+            NOTIF_SERVICE[NotificationService]
+            SOCKET_SERVICE[SocketService]
+            CACHE_SERVICE[CacheService]
+        end
+    end
+    
+    subgraph "⚡ Redis Ecosystem"
+        REDIS_CACHE[(Redis Cache<br/>:6379<br/>Sessions + Unread)]
+        REDIS_PUBSUB[(Redis Pub/Sub<br/>:6380<br/>Events + Queue)]
+    end
+    
+    subgraph "🗄️ PostgreSQL :5435"
+        NOTIF_DB[(Notifications Table<br/>- id, type, title<br/>- message, userId<br/>- isRead, priority)]
+    end
+    
+    subgraph "🏗️ Other Microservices"
+        AUTH_SVC[🔐 Auth Service<br/>JWT Validation]
+        MEDIA_SVC[📁 Media Service<br/>Events Publisher]
+        COMMENT_SVC[💬 Comments Service<br/>Events Publisher]
+    end
+    
+    %% Conexiones WebSocket
+    WEB1 -.->|WebSocket + JWT| GATEWAY
+    WEB2 -.->|WebSocket + JWT| GATEWAY
+    MOBILE -.->|WebSocket + JWT| GATEWAY
+    TEST -.->|WebSocket + JWT| GATEWAY
+    
+    %% Autenticación
+    GATEWAY --> AUTH_SVC
+    AUTH_SVC -.->|Valid JWT| GATEWAY
+    
+    %% Distribución a salas
+    GATEWAY --> ROOM1
+    GATEWAY --> ROOM2
+    GATEWAY --> ROOM3
+    
+    %% Event handling
+    ROOM1 --> JOIN
+    ROOM1 --> GET
+    ROOM1 --> MARK
+    ROOM2 --> JOIN
+    ROOM2 --> GET
+    ROOM2 --> MARK
+    
+    %% Service layer
+    JOIN --> SOCKET_SERVICE
+    GET --> NOTIF_SERVICE
+    MARK --> NOTIF_SERVICE
+    EMIT --> SOCKET_SERVICE
+    
+    SOCKET_SERVICE --> CACHE_SERVICE
+    NOTIF_SERVICE --> NOTIF_DB
+    CACHE_SERVICE --> REDIS_CACHE
+    
+    %% Pub/Sub System
+    MEDIA_SVC -.->|Publish Events| REDIS_PUBSUB
+    COMMENT_SVC -.->|Publish Events| REDIS_PUBSUB
+    AUTH_SVC -.->|Publish Events| REDIS_PUBSUB
+    
+    REDIS_PUBSUB -.->|Subscribe Events| NOTIF_SERVICE
+    NOTIF_SERVICE --> EMIT
+    EMIT --> ROOM1
+    EMIT --> ROOM2
+    EMIT --> ROOM3
+    
+    %% Cache operations
+    NOTIF_SERVICE --> REDIS_CACHE
+    CACHE_SERVICE --> REDIS_CACHE
+    
+    %% Estilos
+    classDef client fill:#e8f5e8,stroke:#2e7d32,stroke-width:2px
+    classDef websocket fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    classDef service fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef database fill:#fff3e0,stroke:#ef6c00,stroke-width:2px
+    classDef cache fill:#ffebee,stroke:#c62828,stroke-width:2px
+    classDef external fill:#f1f8e9,stroke:#558b2f,stroke-width:2px
+    
+    class WEB1,WEB2,MOBILE,TEST client
+    class GATEWAY,ROOM1,ROOM2,ROOM3,JOIN,GET,MARK,EMIT websocket
+    class NOTIF_SERVICE,SOCKET_SERVICE,CACHE_SERVICE service
+    class NOTIF_DB database
+    class REDIS_CACHE,REDIS_PUBSUB cache
+    class AUTH_SVC,MEDIA_SVC,COMMENT_SVC external
+```
 
 ## 📨 Tipos de Notificaciones
 

@@ -26,6 +26,82 @@ Actualmente, los archivos se almacenan **localmente** en el sistema de archivos 
 - ⚠️ **No escalable** para producción
 - ⚠️ **Riesgo de pérdida** de datos si el contenedor falla
 
+## 🔄 Diagrama de Upload Multipart
+
+```mermaid
+sequenceDiagram
+    participant U as 👤 Usuario
+    participant C as 🌐 Cliente
+    participant MS as 📁 Media Service
+    participant FS as 💾 File System
+    participant DB as 🗄️ PostgreSQL
+    participant NS as 🔔 Notifications
+    
+    Note over U,NS: Upload Multipart de Archivos Grandes
+    
+    %% Preparación del archivo
+    U->>C: Seleccionar archivo (ej: video 100MB)
+    C->>C: Dividir archivo en chunks (100 chunks de 1MB)
+    
+    %% Inicializar upload
+    C->>MS: POST /media/init-upload
+    Note right of C: Body: {<br/>  originalName: "video.mp4",<br/>  mimeType: "video/mp4",<br/>  type: "video",<br/>  totalSize: 104857600,<br/>  totalChunks: 100<br/>}
+    
+    MS->>MS: Validar tipo MIME
+    MS->>MS: Verificar límites de tamaño
+    MS->>DB: Crear registro media (status: uploading)
+    MS->>FS: Crear directorio ./uploads/chunks/{mediaId}/
+    MS-->>C: {uploadId, mediaId} + Status 201
+    
+    %% Upload de chunks
+    Note over U,NS: Subida de Chunks Paralela
+    
+    loop Para cada chunk (0 a 99)
+        C->>MS: POST /media/upload-chunk/{mediaId}
+        Note right of C: FormData:<br/>- file: chunk binary<br/>- chunkNumber: N
+        
+        MS->>MS: Validar chunk existe
+        MS->>MS: Verificar orden de chunks
+        MS->>FS: Guardar chunk_{N}.bin
+        MS->>DB: Actualizar chunks_uploaded++
+        MS-->>C: Chunk N subido correctamente
+        
+        alt Chunk upload fallido
+            MS-->>C: Error 400 - Chunk corrupto
+            C->>C: Reintentar upload del chunk
+        end
+    end
+    
+    %% Verificación de integridad
+    C->>MS: POST /media/complete-upload/{mediaId}
+    MS->>FS: Verificar todos los chunks (0-99)
+    MS->>FS: Calcular tamaño total
+    
+    alt Todos los chunks presentes
+        MS->>FS: Concatenar chunks en archivo final
+        Note right of MS: cat chunk_* > video.mp4
+        
+        MS->>FS: Verificar integridad del archivo
+        MS->>FS: Limpiar chunks temporales
+        MS->>DB: Actualizar status = "completed"
+        MS->>DB: Guardar fileSize, filePath
+        
+        %% Notificación de éxito
+        MS->>NS: Publish "media.uploaded" event
+        NS->>U: Notificación "Upload completado"
+        
+        MS-->>C: Upload completado exitosamente
+        
+    else Chunks faltantes
+        MS->>DB: Actualizar status = "failed"
+        MS-->>C: Error 400 - Chunks faltantes
+        
+        %% Notificación de error
+        MS->>NS: Publish "media.upload_failed" event
+        NS->>U: Notificación "Upload fallido"
+    end
+```
+
 ## 📁 Estructura de Directorios
 
 ```
