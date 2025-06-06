@@ -58,8 +58,9 @@ services:
       - pgadmin_data:/var/lib/pgadmin
     networks:
       - auth-network
-      - media-network  # Para acceder también a postgres-media
-      - comments-network  # Para acceder también a postgres-comments
+      - media-network         # Para acceder también a postgres-media
+      - comments-network      # Para acceder también a postgres-comments
+      - notifications-network # Para acceder también a postgres-notifications
 
   # Servicio de Autenticación
   auth-service:
@@ -92,6 +93,7 @@ services:
         condition: service_healthy
     networks:
       - auth-network
+      - notifications-network  # Para publicar eventos de notificaciones
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/auth/health"]
       interval: 30s
@@ -140,6 +142,8 @@ services:
       CORS_ORIGIN: "*"
       AUTH_SERVICE_URL: http://auth-service:3000
       COMMENTS_SERVICE_URL: http://comments-service:3000
+      REDIS_HOST: redis-notifications
+      REDIS_PORT: 6379
     ports:
       - "5901:3000"
     volumes:
@@ -154,6 +158,7 @@ services:
       - media-network
       - auth-network  # Para comunicarse con auth-service
       - comments-network  # Para comunicarse con comments-service
+      - notifications-network  # Para publicar eventos de notificaciones
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 30s
@@ -212,8 +217,116 @@ services:
     networks:
       - comments-network
       - auth-network  # Para comunicarse con auth-service
+      - notifications-network  # Para publicar eventos de notificaciones
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/comments/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Base de datos PostgreSQL para Notifications
+  postgres-notifications:
+    image: postgres:15-alpine
+    container_name: postgres-notifications
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: notifications_db
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+      POSTGRES_HOST_AUTH_METHOD: md5
+      POSTGRES_INITDB_ARGS: "--auth-host=md5"
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres_notifications_data:/var/lib/postgresql/data
+    networks:
+      - notifications-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d notifications_db"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis para Notifications (pub/sub y cache)
+  redis-notifications:
+    image: redis:7-alpine
+    container_name: redis-notifications
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_notifications_data:/data
+    networks:
+      - notifications-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Servicio de Notifications
+  notifications-service:
+    build:
+      context: ./notifications-service
+      dockerfile: Dockerfile.dev
+    container_name: notifications-service
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      PORT: 5903
+      DB_HOST: postgres-notifications
+      DB_PORT: 5432
+      DB_NAME: notifications_db
+      DB_USERNAME: admin
+      DB_PASSWORD: admin123
+      REDIS_HOST: redis-notifications
+      REDIS_PORT: 6379
+      JWT_SECRET: mi_super_secreto_jwt_para_autenticacion_2024
+      JWT_EXPIRES_IN: 24h
+      CORS_ORIGIN: "*"
+      AUTH_SERVICE_URL: http://auth-service:3000
+      MEDIA_SERVICE_URL: http://media-service:3000
+      COMMENTS_SERVICE_URL: http://comments-service:3000
+    ports:
+      - "5903:5903"
+    volumes:
+      - ./notifications-service:/app
+      - /app/node_modules
+    depends_on:
+      postgres-notifications:
+        condition: service_healthy
+      redis-notifications:
+        condition: service_healthy
+    networks:
+      - notifications-network
+      - auth-network      # Para comunicarse con auth-service
+      - media-network     # Para comunicarse con media-service
+      - comments-network  # Para comunicarse con comments-service
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5903/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Aplicación de Testing para WebSockets
+  websocket-testing-app:
+    build:
+      context: ./websocket-testing-app
+      dockerfile: Dockerfile.dev
+    container_name: websocket-testing-app
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      PORT: 8080
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./websocket-testing-app:/app
+      - /app/node_modules
+    networks:
+      - testing-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -222,7 +335,9 @@ volumes:
   postgres_auth_data:
   postgres_media_data:
   postgres_comments_data:
+  postgres_notifications_data:
   redis_auth_data:
+  redis_notifications_data:
   pgadmin_data:
   media_uploads:
   media_chunks:
@@ -233,4 +348,8 @@ networks:
   media-network:
     driver: bridge
   comments-network:
+    driver: bridge
+  notifications-network:
+    driver: bridge
+  testing-network:
     driver: bridge 

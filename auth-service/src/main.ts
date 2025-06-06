@@ -9,8 +9,10 @@ async function bootstrap() {
   // Configurar CORS
   app.enableCors({
     origin: true,
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With'],
     credentials: true,
+    exposedHeaders: ['Authorization'],
   });
 
   // Configurar validaciones globales

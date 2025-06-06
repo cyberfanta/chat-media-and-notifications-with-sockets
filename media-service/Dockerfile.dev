@@ -11,8 +11,8 @@ RUN addgroup -g 1001 -S nodejs && \
 RUN mkdir -p /app && chown nestjs:nodejs /app
 WORKDIR /app
 
-# Cambiar a usuario no-root ANTES de copiar archivos
-USER nestjs
+# NO cambiar a usuario no-root aún - necesitamos permisos para crear directorios
+# USER nestjs
 
 # Copiar archivos de dependencias
 COPY --chown=nestjs:nodejs package*.json ./
@@ -24,7 +24,12 @@ RUN npm install
 COPY --chown=nestjs:nodejs . .
 
 # Limpiar directorio dist y crear directorios necesarios con permisos correctos
-RUN rm -rf dist && mkdir -p uploads chunks dist
+RUN rm -rf dist && mkdir -p uploads chunks dist && \
+    chmod 777 uploads chunks dist && \
+    chown -R nestjs:nodejs /app
+
+# Cambiar a usuario no-root AHORA
+USER nestjs
 
 # Exponer el puerto
 EXPOSE 3000

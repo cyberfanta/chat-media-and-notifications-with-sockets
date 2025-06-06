@@ -17,6 +17,25 @@ Sistema completo de gestión de contenido multimedia con microservicios de auten
 - ✅ Validación de tipos MIME
 - ✅ Eliminación segura de archivos
 
+### 💬 Comments Service
+- ✅ Sistema de comentarios jerárquico
+- ✅ Moderación de comentarios con roles
+- ✅ Paginación y filtros de comentarios
+- ✅ Estadísticas de comentarios por contenido
+- ✅ Eliminación en cascada de comentarios
+
+### 🔔 Notifications Service
+- ✅ Notificaciones en tiempo real con WebSockets
+- ✅ Sistema completo de CRUD de notificaciones
+- ✅ Cache inteligente con Redis para rendimiento
+- ✅ Pub/Sub entre microservicios para eventos
+- ✅ Rate limiting para prevenir spam
+- ✅ Múltiples tipos de notificaciones (auth, media, comments, sistema)
+- ✅ Marcado masivo de notificaciones como leídas
+- ✅ Filtros avanzados y paginación
+- ✅ Limpieza automática de notificaciones expiradas
+- ✅ Gestión de conexiones WebSocket por usuario
+
 ### 🛠️ Características Generales
 - ✅ Documentación Swagger automática
 - ✅ Validaciones con class-validator
@@ -99,10 +118,16 @@ docker system prune -f
 | **Media Swagger** | 5901 | http://localhost:5901/api/docs | Documentación Media API |
 | **Comments Service** | 5902 | http://localhost:5902 | API de comentarios |
 | **Comments Swagger** | 5902 | http://localhost:5902/api/docs | Documentación Comments API |
+| **Notifications Service** | 5903 | http://localhost:5903 | API de notificaciones + Socket.IO |
+| **Notifications Swagger** | 5903 | http://localhost:5903/api/docs | Documentación Notifications API |
+| **Notifications Socket.IO** | 5903 | http://localhost:5903/notifications | Socket.IO en tiempo real |
+| **WebSocket Testing App** | 8080 | http://localhost:8080 | Cliente de pruebas Socket.IO |
 | **PostgreSQL Auth** | 5432 | localhost:5432 | Base de datos autenticación |
 | **PostgreSQL Media** | 5433 | localhost:5433 | Base de datos multimedia |
 | **PostgreSQL Comments** | 5434 | localhost:5434 | Base de datos comentarios |
-| **Redis** | 6379 | localhost:6379 | Cache y sesiones |
+| **PostgreSQL Notifications** | 5435 | localhost:5435 | Base de datos notificaciones |
+| **Redis Auth** | 6379 | localhost:6379 | Cache y sesiones |
+| **Redis Notifications** | 6380 | localhost:6380 | Pub/Sub y cache notificaciones |
 | **pgAdmin** | 5050 | http://localhost:5050 | Administrador de BD (solo desarrollo) |
 
 ## 🔑 Credenciales por Defecto
@@ -128,14 +153,26 @@ docker system prune -f
 - **Usuario**: `admin`
 - **Contraseña**: `admin123`
 
+### Base de Datos PostgreSQL Notifications
+- **Host**: localhost
+- **Puerto**: 5435
+- **Base de datos**: `notifications_db`
+- **Usuario**: `admin`
+- **Contraseña**: `admin123`
+
 ### pgAdmin (Administrador de Base de Datos)
 - **URL**: http://localhost:5050
 - **Email**: `admin@admin.com`
 - **Contraseña**: `admin123`
 
-### Redis
+### Redis Auth
 - **Host**: localhost
 - **Puerto**: 6379
+- **Sin contraseña**
+
+### Redis Notifications
+- **Host**: localhost  
+- **Puerto**: 6380
 - **Sin contraseña**
 
 ### JWT
@@ -182,10 +219,82 @@ docker system prune -f
 | GET | `/comments/stats/:contentId` | Estadísticas de comentarios | No |
 | GET | `/comments/health` | Estado del servicio | No |
 
+### 🔔 Notifications Service (Puerto 5903)
+| Método | Endpoint | Descripción | Autenticación |
+|--------|----------|-------------|---------------|
+| GET | `/notifications` | Listar notificaciones con filtros y paginación | JWT |
+| GET | `/notifications/unread` | Obtener notificaciones no leídas (con cache) | JWT |
+| GET | `/notifications/unread/count` | Contador de notificaciones no leídas | JWT |
+| GET | `/notifications/:id` | Obtener notificación específica | JWT |
+| POST | `/notifications` | Crear nueva notificación | JWT |
+| PATCH | `/notifications/:id` | Actualizar notificación (marcar como leída) | JWT |
+| PATCH | `/notifications/:id/mark-read` | Marcar notificación como leída | JWT |
+| POST | `/notifications/mark-read` | Marcar múltiples notificaciones como leídas | JWT |
+| POST | `/notifications/mark-all-read` | Marcar todas las notificaciones como leídas | JWT |
+| DELETE | `/notifications/:id` | Eliminar notificación | JWT |
+| POST | `/notifications/cleanup` | Limpiar notificaciones expiradas | JWT |
+| GET | `/health` | Estado del servicio | No |
+
+#### 📡 WebSocket Events (ws://localhost:5903/notifications)
+| Evento | Tipo | Descripción | Autenticación |
+|--------|------|-------------|---------------|
+| `join_notifications` | Enviar | Unirse a notificaciones del usuario | Token JWT |
+| `mark_as_read` | Enviar | Marcar notificaciones como leídas | Token JWT |
+| `get_notifications` | Enviar | Obtener notificaciones con filtros | Token JWT |
+| `new_notification` | Recibir | Nueva notificación en tiempo real | - |
+| `unread_count` | Recibir | Contador de notificaciones no leídas | - |
+| `unread_notifications` | Recibir | Lista de notificaciones no leídas | - |
+| `marked_as_read` | Recibir | Confirmación de notificaciones marcadas | - |
+| `notifications` | Recibir | Lista de notificaciones solicitadas | - |
+| `error` | Recibir | Errores de autenticación o procesamiento | - |
+
 ### 📖 Documentación Swagger
 - **Auth Service**: http://localhost:5900/api/docs
 - **Media Service**: http://localhost:5901/api/docs
 - **Comments Service**: http://localhost:5902/api/docs
+- **Notifications Service**: http://localhost:5903/api/docs
+
+## 🧪 Cliente de Testing para WebSockets
+
+### 🌐 WebSocket Testing App (Puerto 8080)
+Hemos incluido un **contenedor separado** con una aplicación web completa para probar las funcionalidades de Socket.IO del microservicio de notificaciones.
+
+**Características del Testing Client:**
+- ✅ **Interfaz gráfica amigable** para testing de Socket.IO
+- ✅ **Autenticación automática** - obtiene tokens JWT automáticamente
+- ✅ **Testing en tiempo real** - envía y recibe eventos Socket.IO
+- ✅ **Log detallado** de todos los mensajes y eventos
+- ✅ **Ejemplos predefinidos** de payloads para cada evento
+- ✅ **Verificación de estado** de todos los microservicios
+
+**Cómo usar:**
+1. Accede a: http://localhost:8080
+2. Haz clic en "🔑 Obtener Token" para autenticarte automáticamente
+3. Haz clic en "🔌 Conectar" para establecer conexión Socket.IO
+4. Selecciona eventos y envía mensajes de prueba
+5. Observa las respuestas en tiempo real en el log
+
+**Eventos disponibles para testing:**
+- `join_notifications` - Unirse a notificaciones del usuario
+- `get_notifications` - Obtener lista de notificaciones con filtros
+- `mark_as_read` - Marcar notificaciones como leídas
+
+**Eventos que recibirás:**
+- `new_notification` - Nuevas notificaciones en tiempo real
+- `unread_count` - Contador de notificaciones no leídas
+- `unread_notifications` - Lista de notificaciones no leídas
+- `marked_as_read` - Confirmación de marcado como leído
+- `notifications` - Lista de notificaciones solicitadas
+
+**⚠️ Nota Importante sobre Notificaciones Automáticas:**
+Las notificaciones automáticas entre microservicios (como notificación de bienvenida al registrarse) **no están implementadas automáticamente**. El sistema tiene toda la infraestructura preparada, pero los triggers automáticos en los otros microservicios aún no están conectados. 
+
+**Para probar el sistema ahora:**
+1. Usa el cliente de testing en http://localhost:8080
+2. Crea notificaciones manualmente en la pestaña "➕ Crear Notificación"
+3. Ve cómo funcionan en tiempo real vía Socket.IO
+
+**Documentación completa:** Ver `FLUJO_NOTIFICACIONES.md` para detalles sobre cómo implementar las notificaciones automáticas.
 
 ## 🔧 Herramientas de Testing para Upload Multimedia
 
@@ -801,7 +910,7 @@ Ya tenemos implementados los primeros dos microservicios. Los siguientes servici
 1. ✅ **Servicio de Autenticación** (puerto 5900) - ¡Completado!
 2. ✅ **Servicio de Contenido Multimedia** (puerto 5901) - ¡Completado!
 3. ✅ **Servicio de Comentarios** (puerto 5902) - ¡Completado!
-4. **Servicio de Notificaciones** (puerto 5903)
+4. ✅ **Servicio de Notificaciones** (puerto 5903) - ¡Completado!
 5. **Servicio de Procesamiento** (puerto 5904)
 
 ## 📞 Soporte
@@ -815,12 +924,16 @@ Si tienes problemas o preguntas:
 2. **Verifica la documentación Swagger**:
    - Auth Service: http://localhost:5900/api/docs
    - Media Service: http://localhost:5901/api/docs
+   - Comments Service: http://localhost:5902/api/docs
+   - Notifications Service: http://localhost:5903/api/docs
 
 3. **Ejecuta los tests**: `docker-compose exec [service-name] npm test`
 
 4. **Verifica el estado de los servicios**:
    - Auth: `curl http://localhost:5900/auth/health`
-   - Media: `curl http://localhost:5901/media/health`
+   - Media: `curl http://localhost:5901/health`
+   - Comments: `curl http://localhost:5902/comments/health`
+   - Notifications: `curl http://localhost:5903/health`
 
 ## 🧪 Testing
 
@@ -908,6 +1021,90 @@ media-service/src/
 - Tests de integración para endpoints principales
 - Documentación de casos de prueba complejos
 
+## 🔔 Tipos de Notificaciones Soportadas
+
+### 🔐 Notificaciones de Autenticación
+- **USER_REGISTERED**: Bienvenida al registrarse
+- **LOGIN_NEW_DEVICE**: Alerta de login desde nuevo dispositivo  
+- **PASSWORD_CHANGED**: Confirmación de cambio de contraseña
+- **LOGIN_FAILED**: Intentos de login fallidos
+- **PROFILE_UPDATED**: Perfil actualizado
+
+### 🎬 Notificaciones de Media
+- **UPLOAD_COMPLETED**: Archivo subido exitosamente
+- **UPLOAD_FAILED**: Error en la subida de archivo
+- **MEDIA_PROCESSED**: Procesamiento completado
+- **MEDIA_DELETED**: Media eliminado
+- **NEW_CONTENT_FOLLOWED**: Nuevo contenido de usuarios seguidos
+- **MEDIA_REPORTED**: Media reportado (para moderadores)
+
+### 💬 Notificaciones de Comentarios
+- **NEW_COMMENT**: Nuevo comentario en tu contenido
+- **COMMENT_REPLY**: Respuesta a tu comentario
+- **COMMENT_MODERATED**: Comentario moderado/eliminado
+- **COMMENT_APPROVED**: Comentario aprobado tras moderación
+- **COMMENT_MENTION**: Mención en comentario (@usuario)
+
+### ⚙️ Notificaciones del Sistema
+- **SYSTEM_MAINTENANCE**: Mantenimiento programado
+- **SYSTEM_UPDATE**: Actualizaciones disponibles
+- **USAGE_LIMIT_REACHED**: Límites de uso alcanzados
+
+### 📊 Notificaciones Sociales
+- **NEW_FOLLOWER**: Nuevo seguidor
+- **CONTENT_LIKED**: Reacciones/likes en tu contenido
+- **CONTENT_TRENDING**: Tu contenido es tendencia
+- **MILESTONE_REACHED**: Logros alcanzados (ej: 100 visualizaciones)
+
+## 🎯 Características Avanzadas del Notifications Service
+
+### 🚀 Redis Integration
+- **Pub/Sub**: Comunicación automática entre microservicios
+- **Cache**: Notificaciones no leídas con TTL de 1 hora
+- **Rate Limiting**: Máximo 10 notificaciones por minuto por usuario
+- **Connection Management**: Tracking de usuarios conectados por WebSocket
+
+### 📡 WebSocket Features
+- **Autenticación JWT**: Vía query string o header Authorization
+- **Salas por Usuario**: Notificaciones dirigidas y seguras
+- **Eventos en Tiempo Real**: Notificaciones instantáneas
+- **Reconexión Automática**: Gestión robusta de conexiones
+
+### 🛡️ Seguridad y Performance
+- **JWT en todos los endpoints**: Protección total de la API
+- **Validación de ownership**: Solo acceso a notificaciones propias
+- **Índices optimizados**: Consultas rápidas por usuario y tipo
+- **Limpieza automática**: Eliminación de notificaciones expiradas
+
+### 📈 Filtros y Paginación
+- **Filtros avanzados**: Por tipo, prioridad, fecha, estado de lectura
+- **Paginación**: Manejo eficiente de grandes volúmenes
+- **Ordenamiento**: Por fecha de creación (más recientes primero)
+- **Búsqueda**: Por contenido de título y mensaje
+
+### ⚠️ Nota Importante sobre Notificaciones Automáticas
+
+Las notificaciones automáticas entre microservicios (como notificación de bienvenida al registrarse) **no están implementadas automáticamente**. El sistema tiene toda la infraestructura preparada, pero los triggers automáticos en los otros microservicios aún no están conectados.
+
+**🔧 Lo que está implementado:**
+- ✅ Base de datos de notificaciones completa
+- ✅ API REST y Socket.IO funcionando
+- ✅ Redis pub/sub configurado
+- ✅ Cliente de testing en http://localhost:8080
+
+**❌ Lo que falta implementar:**
+- ❌ Triggers automáticos en Auth Service
+- ❌ Triggers automáticos en Media Service  
+- ❌ Triggers automáticos en Comments Service
+
+**📖 Para más detalles:** Ver `FLUJO_NOTIFICACIONES.md` con explicación completa del sistema.
+
+**🧪 Para probarlo ahora:**
+1. Ve a http://localhost:8080
+2. Obtén un token JWT
+3. Crea notificaciones manualmente
+4. ¡Ve cómo funcionan en tiempo real vía Socket.IO!
+
 ---
 
-**¡Los microservicios de autenticación y media están listos para usar! 🎉** 
+**¡Los 4 microservicios están listos para usar! 🎉** 

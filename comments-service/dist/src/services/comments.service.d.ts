@@ -4,6 +4,7 @@ import { CreateCommentDto } from '../dto/create-comment.dto';
 import { UpdateCommentDto } from '../dto/update-comment.dto';
 import { ModerateCommentDto } from '../dto/moderate-comment.dto';
 import { QueryCommentsDto } from '../dto/query-comments.dto';
+import { RedisService } from '../redis/redis.service';
 export interface PaginatedComments {
     comments: Comment[];
     total: number;
@@ -18,8 +19,9 @@ export interface PaginatedComments {
 }
 export declare class CommentsService {
     private commentRepository;
+    private redisService;
     private readonly logger;
-    constructor(commentRepository: Repository<Comment>);
+    constructor(commentRepository: Repository<Comment>, redisService: RedisService);
     create(createCommentDto: CreateCommentDto, userId: string, userEmail: string): Promise<Comment>;
     findByContentId(contentId: string, query: QueryCommentsDto): Promise<PaginatedComments>;
     private findByContentIdWithCursor;

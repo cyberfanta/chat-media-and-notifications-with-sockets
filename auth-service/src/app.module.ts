@@ -6,6 +6,7 @@ import { PassportModule } from '@nestjs/passport';
 
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
+import { RedisModule } from './redis/redis.module';
 import { User } from './users/entities/user.entity';
 
 @Module({
@@ -51,6 +52,7 @@ import { User } from './users/entities/user.entity';
     // Módulos de la aplicación
     AuthModule,
     UsersModule,
+    RedisModule,
   ],
   controllers: [],
   providers: [],

@@ -19,9 +19,11 @@ const typeorm_1 = require("@nestjs/typeorm");
 const typeorm_2 = require("typeorm");
 const comment_entity_1 = require("../entities/comment.entity");
 const query_comments_dto_1 = require("../dto/query-comments.dto");
+const redis_service_1 = require("../redis/redis.service");
 let CommentsService = CommentsService_1 = class CommentsService {
-    constructor(commentRepository) {
+    constructor(commentRepository, redisService) {
         this.commentRepository = commentRepository;
+        this.redisService = redisService;
         this.logger = new common_1.Logger(CommentsService_1.name);
     }
     async create(createCommentDto, userId, userEmail) {
@@ -45,6 +47,21 @@ let CommentsService = CommentsService_1 = class CommentsService {
             });
             const savedComment = await this.commentRepository.save(comment);
             this.logger.log(`Comment created: ${savedComment.id} by user: ${userId}`);
+            try {
+                await this.redisService.publishNotificationEvent('new_comment', {
+                    commentId: savedComment.id,
+                    contentId: savedComment.contentId,
+                    authorId: userId,
+                    authorEmail: userEmail,
+                    content: savedComment.content,
+                    parentId: savedComment.parentId,
+                    isReply: !!savedComment.parentId,
+                    createdAt: savedComment.createdAt.toISOString()
+                });
+            }
+            catch (redisError) {
+                this.logger.warn('Failed to publish notification event (continuing without Redis):', redisError.message);
+            }
             return savedComment;
         }
         catch (error) {
@@ -353,6 +370,7 @@ exports.CommentsService = CommentsService;
 exports.CommentsService = CommentsService = CommentsService_1 = __decorate([
     (0, common_1.Injectable)(),
     __param(0, (0, typeorm_1.InjectRepository)(comment_entity_1.Comment)),
-    __metadata("design:paramtypes", [typeorm_2.Repository])
+    __metadata("design:paramtypes", [typeorm_2.Repository,
+        redis_service_1.RedisService])
 ], CommentsService);
 //# sourceMappingURL=comments.service.js.map

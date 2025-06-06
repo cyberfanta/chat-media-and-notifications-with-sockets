@@ -143,6 +143,14 @@ export class MediaController {
     description: 'ID del media',
     type: 'string',
   })
+  @ApiBody({
+    required: false,
+    description: 'Cuerpo vacío - no se requieren datos adicionales',
+    schema: {
+      type: 'object',
+      properties: {},
+    },
+  })
   @ApiResponse({
     status: 200,
     description: 'Upload completado exitosamente',

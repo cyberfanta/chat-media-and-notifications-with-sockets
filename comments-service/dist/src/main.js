@@ -8,8 +8,10 @@ async function bootstrap() {
     const app = await core_1.NestFactory.create(app_module_1.AppModule);
     app.enableCors({
         origin: process.env.CORS_ORIGIN || '*',
-        methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+        methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+        allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With'],
         credentials: true,
+        exposedHeaders: ['Content-Range', 'Accept-Ranges'],
     });
     app.useGlobalPipes(new common_1.ValidationPipe({
         whitelist: true,

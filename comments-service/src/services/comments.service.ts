@@ -12,6 +12,7 @@ import { CreateCommentDto } from '../dto/create-comment.dto';
 import { UpdateCommentDto } from '../dto/update-comment.dto';
 import { ModerateCommentDto } from '../dto/moderate-comment.dto';
 import { QueryCommentsDto, CommentSortBy, SortOrder } from '../dto/query-comments.dto';
+import { RedisService } from '../redis/redis.service';
 
 export interface PaginatedComments {
   comments: Comment[];
@@ -34,6 +35,7 @@ export class CommentsService {
   constructor(
     @InjectRepository(Comment)
     private commentRepository: Repository<Comment>,
+    private redisService: RedisService,
   ) {}
 
   async create(createCommentDto: CreateCommentDto, userId: string, userEmail: string): Promise<Comment> {
@@ -63,6 +65,22 @@ export class CommentsService {
 
       const savedComment = await this.commentRepository.save(comment);
       this.logger.log(`Comment created: ${savedComment.id} by user: ${userId}`);
+      
+      // Publicar evento de nuevo comentario para notificaciones
+      try {
+        await this.redisService.publishNotificationEvent('new_comment', {
+          commentId: savedComment.id,
+          contentId: savedComment.contentId,
+          authorId: userId,
+          authorEmail: userEmail,
+          content: savedComment.content,
+          parentId: savedComment.parentId,
+          isReply: !!savedComment.parentId,
+          createdAt: savedComment.createdAt.toISOString()
+        });
+      } catch (redisError) {
+        this.logger.warn('Failed to publish notification event (continuing without Redis):', redisError.message);
+      }
       
       return savedComment;
     } catch (error) {

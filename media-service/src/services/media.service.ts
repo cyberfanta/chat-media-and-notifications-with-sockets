@@ -9,6 +9,7 @@ import { Repository } from 'typeorm';
 import { Media, MediaStatus, MediaType } from '../entities/media.entity';
 import { InitUploadDto } from '../dto/init-upload.dto';
 import { CommentsService } from './comments.service';
+import { RedisService } from '../redis/redis.service';
 import * as fs from 'fs';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
@@ -23,6 +24,7 @@ export class MediaService {
     @InjectRepository(Media)
     private mediaRepository: Repository<Media>,
     private commentsService: CommentsService,
+    private redisService: RedisService,
   ) {
     // Crear directorios si no existen
     this.ensureDirectoryExists(this.uploadsDir);
@@ -85,10 +87,17 @@ export class MediaService {
       const chunkDir = path.join(this.chunksDir, mediaId);
       const chunkPath = path.join(chunkDir, `chunk_${chunkNumber}`);
       
+      // Verificar si el chunk ya existe
+      const chunkExists = fs.existsSync(chunkPath);
+      
       await fs.promises.writeFile(chunkPath, file.buffer);
 
       // Actualizar contador de chunks subidos
-      media.uploadedChunks = await this.countUploadedChunks(mediaId);
+      const currentUploadedChunks = await this.countUploadedChunks(mediaId);
+      media.uploadedChunks = currentUploadedChunks;
+      
+      console.log(`📦 Chunk ${chunkNumber} guardado para media ${mediaId}. Chunks totales: ${currentUploadedChunks}/${media.totalChunks}`);
+      
       await this.mediaRepository.save(media);
 
       return {
@@ -106,13 +115,19 @@ export class MediaService {
   async completeUpload(mediaId: string, userId: string): Promise<Media> {
     const media = await this.findMediaByIdAndUser(mediaId, userId);
 
-    if (media.status !== MediaStatus.UPLOADING) {
+    console.log(`🔄 Intentando completar upload para media ${mediaId}:`);
+    console.log(`   - Estado actual: ${media.status}`);
+    console.log(`   - Chunks en BD: ${media.uploadedChunks}/${media.totalChunks}`);
+
+    if (media.status !== MediaStatus.UPLOADING && media.status !== MediaStatus.PROCESSING) {
       throw new BadRequestException(
         `No se puede completar upload. Estado actual: ${media.status}`,
       );
     }
 
     const uploadedChunks = await this.countUploadedChunks(mediaId);
+    console.log(`   - Chunks en disco: ${uploadedChunks}/${media.totalChunks}`);
+    
     if (uploadedChunks !== media.totalChunks) {
       throw new BadRequestException(
         `Faltan chunks. Subidos: ${uploadedChunks}, Esperados: ${media.totalChunks}`,
@@ -120,12 +135,19 @@ export class MediaService {
     }
 
     try {
-      // Cambiar estado a PROCESSING
-      media.status = MediaStatus.PROCESSING;
-      await this.mediaRepository.save(media);
+      // Cambiar estado a PROCESSING si no está ya en processing
+      if (media.status !== MediaStatus.PROCESSING) {
+        media.status = MediaStatus.PROCESSING;
+        await this.mediaRepository.save(media);
+      }
 
-      // Ensamblar archivo
-      const finalFilePath = await this.assembleFile(media);
+      // Ensamblar archivo si no existe ya
+      let finalFilePath = media.filePath;
+      if (!finalFilePath || !fs.existsSync(finalFilePath)) {
+        finalFilePath = await this.assembleFile(media);
+      } else {
+        console.log(`📁 Archivo ya existe en: ${finalFilePath}`);
+      }
       
       // Actualizar información del archivo
       media.fileName = path.basename(finalFilePath);
@@ -135,7 +157,23 @@ export class MediaService {
       // Limpiar chunks
       await this.cleanupChunks(mediaId);
 
-      return await this.mediaRepository.save(media);
+      const savedMedia = await this.mediaRepository.save(media);
+
+      // Publicar evento de upload completado para notificaciones
+      await this.redisService.publishNotificationEvent('upload_completed', {
+        mediaId: savedMedia.id,
+        userId: savedMedia.uploadedBy,
+        fileName: savedMedia.originalName,
+        fileSize: savedMedia.totalSize,
+        mediaType: savedMedia.type,
+        completedAt: new Date().toISOString()
+      });
+
+      console.log(`✅ Upload completado exitosamente para media ${mediaId}`);
+      console.log(`   - Estado final: ${savedMedia.status}`);
+      console.log(`   - Archivo guardado en: ${savedMedia.filePath}`);
+
+      return savedMedia;
     } catch (error) {
       media.status = MediaStatus.FAILED;
       await this.mediaRepository.save(media);
@@ -261,7 +299,7 @@ export class MediaService {
 
   private ensureDirectoryExists(dirPath: string): void {
     if (!fs.existsSync(dirPath)) {
-      fs.mkdirSync(dirPath, { recursive: true });
+      fs.mkdirSync(dirPath, { recursive: true, mode: 0o755 });
     }
   }
 

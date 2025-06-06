@@ -3,6 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ClassSerializerInterceptor } from '@nestjs/common';
 
 import { UsersService } from '../users/users.service';
+import { RedisService } from '../redis/redis.service';
 import { User } from '../users/entities/user.entity';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -27,11 +28,22 @@ export class AuthService {
   constructor(
     private usersService: UsersService,
     private jwtService: JwtService,
+    private redisService: RedisService,
   ) {}
 
   async register(registerDto: RegisterDto): Promise<AuthResponse> {
     try {
       const user = await this.usersService.create(registerDto);
+      
+      // Publicar evento de registro para notificaciones
+      await this.redisService.publishNotificationEvent('user_registered', {
+        userId: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        registrationDate: new Date().toISOString()
+      });
+      
       return this.generateAuthResponse(user);
     } catch (error) {
       if (error instanceof ConflictException) {
@@ -65,6 +77,14 @@ export class AuthService {
 
     // Actualizar último login
     await this.usersService.updateLastLogin(user.id);
+
+    // Publicar evento de login para notificaciones
+    await this.redisService.publishNotificationEvent('user_login', {
+      userId: user.id,
+      email: user.email,
+      loginTime: new Date().toISOString(),
+      userAgent: 'Unknown' // Se puede mejorar pasando el request
+    });
 
     return this.generateAuthResponse(user);
   }

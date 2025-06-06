@@ -1,0 +1,37 @@
+# Dockerfile de desarrollo para WebSocket Testing App
+FROM node:18-alpine
+
+# Información del maintainer
+LABEL maintainer="WebSocket Testing Team"
+LABEL description="Testing client for WebSocket notifications"
+
+# Crear directorio de trabajo
+WORKDIR /app
+
+# Copiar archivos de dependencias
+COPY package*.json ./
+
+# Instalar dependencias
+RUN npm install --only=production && \
+    npm cache clean --force
+
+# Copiar código fuente
+COPY . .
+
+# Crear usuario no-root
+RUN addgroup -g 1001 -S appgroup && \
+    adduser -S appuser -u 1001 -G appgroup
+
+# Cambiar ownership
+RUN chown -R appuser:appgroup /app
+USER appuser
+
+# Exponer puerto
+EXPOSE 8080
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:8080/health', (res) => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
+
+# Comando por defecto
+CMD ["npm", "start"] 
