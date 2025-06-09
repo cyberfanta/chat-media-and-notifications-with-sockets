@@ -4,6 +4,7 @@ import { ConflictException, UnauthorizedException } from '@nestjs/common';
 
 import { AuthService } from './auth.service';
 import { UsersService } from '../users/users.service';
+import { RedisService } from '../redis/redis.service';
 import { User, UserRole } from '../users/entities/user.entity';
 
 describe('AuthService', () => {
@@ -49,6 +50,14 @@ describe('AuthService', () => {
   const mockJwtService = {
     sign: jest.fn(),
     decode: jest.fn(),
+    verify: jest.fn(),
+  };
+
+  const mockRedisService = {
+    publishNotificationEvent: jest.fn(),
+    get: jest.fn(),
+    set: jest.fn(),
+    del: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -63,6 +72,10 @@ describe('AuthService', () => {
           provide: JwtService,
           useValue: mockJwtService,
         },
+        {
+          provide: RedisService,
+          useValue: mockRedisService,
+        },
       ],
     }).compile();
 
@@ -73,6 +86,7 @@ describe('AuthService', () => {
 
   afterEach(() => {
     jest.clearAllMocks();
+    mockRedisService.publishNotificationEvent.mockClear();
   });
 
   it('should be defined', () => {
@@ -96,6 +110,7 @@ describe('AuthService', () => {
         iat: Math.floor(Date.now() / 1000),
         exp: Math.floor(Date.now() / 1000) + 86400,
       });
+      mockRedisService.publishNotificationEvent.mockResolvedValue(true);
 
       const result = await authService.register(registerDto);
 
@@ -107,6 +122,13 @@ describe('AuthService', () => {
       expect(result.access_token).toBe('mock-jwt-token');
       expect(result.user).toEqual(mockUser);
       expect(mockUsersService.create).toHaveBeenCalledWith(registerDto);
+      expect(mockRedisService.publishNotificationEvent).toHaveBeenCalledWith('user_registered', {
+        userId: mockUser.id,
+        email: mockUser.email,
+        firstName: mockUser.firstName,
+        lastName: mockUser.lastName,
+        registrationDate: expect.any(String),
+      });
       expect(mockJwtService.sign).toHaveBeenCalledWith({
         sub: mockUser.id,
         email: mockUser.email,
@@ -133,12 +155,14 @@ describe('AuthService', () => {
         iat: Math.floor(Date.now() / 1000),
         exp: Math.floor(Date.now() / 1000) + 86400,
       });
+      mockRedisService.publishNotificationEvent.mockResolvedValue(true);
 
       const result = await authService.register(minimalDto);
 
       expect(result).toHaveProperty('user');
       expect(result.user.email).toBe('minimal@example.com');
       expect(mockUsersService.create).toHaveBeenCalledWith(minimalDto);
+      expect(mockRedisService.publishNotificationEvent).toHaveBeenCalled();
     });
 
     it('should throw ConflictException if user already exists', async () => {
@@ -171,6 +195,7 @@ describe('AuthService', () => {
         iat: Math.floor(Date.now() / 1000),
         exp: Math.floor(Date.now() / 1000) + 86400,
       });
+      mockRedisService.publishNotificationEvent.mockResolvedValue(true);
 
       const result = await authService.login(loginDto);
 
@@ -181,6 +206,12 @@ describe('AuthService', () => {
       expect(mockUsersService.findByEmail).toHaveBeenCalledWith(loginDto.email);
       expect(mockUsersService.validatePassword).toHaveBeenCalledWith(mockUser, loginDto.password);
       expect(mockUsersService.updateLastLogin).toHaveBeenCalledWith(mockUser.id);
+      expect(mockRedisService.publishNotificationEvent).toHaveBeenCalledWith('user_login', {
+        userId: mockUser.id,
+        email: mockUser.email,
+        loginTime: expect.any(String),
+        userAgent: 'Unknown',
+      });
     });
 
     it('should throw UnauthorizedException if user not found', async () => {
@@ -321,6 +352,52 @@ describe('AuthService', () => {
     });
   });
 
+  describe('validateTokenFromOtherService', () => {
+    it('should validate token from other service successfully', async () => {
+      const token = 'valid-jwt-token';
+      const payload = {
+        sub: mockUser.id,
+        email: mockUser.email,
+        role: mockUser.role,
+      };
+
+      mockJwtService.verify.mockReturnValue(payload);
+      mockUsersService.findById.mockResolvedValue(mockUser);
+
+      const result = await authService.validateTokenFromOtherService(token);
+
+      expect(result).toEqual(payload);
+      expect(mockJwtService.verify).toHaveBeenCalledWith(token);
+      expect(mockUsersService.findById).toHaveBeenCalledWith(payload.sub);
+    });
+
+    it('should throw UnauthorizedException for invalid token', async () => {
+      const token = 'invalid-jwt-token';
+      mockJwtService.verify.mockImplementation(() => {
+        throw new Error('Invalid token');
+      });
+
+      await expect(authService.validateTokenFromOtherService(token)).rejects.toThrow(UnauthorizedException);
+      await expect(authService.validateTokenFromOtherService(token)).rejects.toThrow('Token inválido o expirado');
+    });
+
+    it('should throw UnauthorizedException for inactive user', async () => {
+      const token = 'valid-jwt-token';
+      const payload = {
+        sub: mockUser.id,
+        email: mockUser.email,
+        role: mockUser.role,
+      };
+      const inactiveUser = { ...mockUser, isActive: false };
+
+      mockJwtService.verify.mockReturnValue(payload);
+      mockUsersService.findById.mockResolvedValue(inactiveUser);
+
+      await expect(authService.validateTokenFromOtherService(token)).rejects.toThrow(UnauthorizedException);
+      await expect(authService.validateTokenFromOtherService(token)).rejects.toThrow('Token inválido o expirado');
+    });
+  });
+
   describe('generateAuthResponse (private method testing)', () => {
     it('should generate correct auth response structure', async () => {
       mockUsersService.create.mockResolvedValue(mockUser);
@@ -329,6 +406,7 @@ describe('AuthService', () => {
         iat: 1640995200, // Jan 1, 2022
         exp: 1641081600, // Jan 2, 2022
       });
+      mockRedisService.publishNotificationEvent.mockResolvedValue(true);
 
       const result = await authService.register({
         email: 'test@example.com',

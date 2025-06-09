@@ -1,12 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { CommentsService } from './comments.service';
+import { RedisService } from '../redis/redis.service';
 import { Comment, CommentStatus } from '../entities/comment.entity';
 import { SortOrder, CommentSortBy } from '../dto/query-comments.dto';
 
 describe('CommentsService - Cursor Pagination Tests', () => {
   let service: CommentsService;
   let mockRepository: any;
+  let mockRedisService: any;
 
   const mockComments = [
     {
@@ -62,12 +64,23 @@ describe('CommentsService - Cursor Pagination Tests', () => {
       findOne: jest.fn(),
     };
 
+    mockRedisService = {
+      publishNotificationEvent: jest.fn().mockResolvedValue(true),
+      get: jest.fn(),
+      set: jest.fn(),
+      del: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CommentsService,
         {
           provide: getRepositoryToken(Comment),
           useValue: mockRepository,
+        },
+        {
+          provide: RedisService,
+          useValue: mockRedisService,
         },
       ],
     }).compile();

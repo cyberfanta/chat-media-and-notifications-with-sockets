@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { CommentsService } from './comments.service';
+import { RedisService } from '../redis/redis.service';
 import { Comment, CommentStatus } from '../entities/comment.entity';
 
 describe('CommentsService Simple Test', () => {
@@ -16,6 +17,13 @@ describe('CommentsService Simple Test', () => {
     remove: jest.fn(),
   };
 
+  const mockRedisService = {
+    publishNotificationEvent: jest.fn().mockResolvedValue(true),
+    get: jest.fn(),
+    set: jest.fn(),
+    del: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -23,6 +31,10 @@ describe('CommentsService Simple Test', () => {
         {
           provide: getRepositoryToken(Comment),
           useValue: mockRepository,
+        },
+        {
+          provide: RedisService,
+          useValue: mockRedisService,
         },
       ],
     }).compile();
