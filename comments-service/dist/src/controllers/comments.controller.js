@@ -33,13 +33,6 @@ let CommentsController = class CommentsController {
     async getCommentsByMedia(mediaId, query) {
         return await this.commentsService.findByContentId(mediaId, query);
     }
-    getHealth() {
-        return {
-            status: 'ok',
-            timestamp: new Date().toISOString(),
-            service: 'comments-service',
-        };
-    }
     async getComment(id) {
         return await this.commentsService.findById(id);
     }
@@ -165,28 +158,6 @@ __decorate([
     __metadata("design:paramtypes", [String, query_comments_dto_1.QueryCommentsDto]),
     __metadata("design:returntype", Promise)
 ], CommentsController.prototype, "getCommentsByMedia", null);
-__decorate([
-    (0, common_1.Get)('health'),
-    (0, swagger_1.ApiOperation)({
-        summary: 'Health check del servicio',
-        description: 'Verifica que el servicio de comentarios esté funcionando correctamente',
-    }),
-    (0, swagger_1.ApiResponse)({
-        status: 200,
-        description: 'Servicio funcionando correctamente',
-        schema: {
-            type: 'object',
-            properties: {
-                status: { type: 'string', example: 'ok' },
-                timestamp: { type: 'string' },
-                service: { type: 'string', example: 'comments-service' },
-            },
-        },
-    }),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", []),
-    __metadata("design:returntype", void 0)
-], CommentsController.prototype, "getHealth", null);
 __decorate([
     (0, common_1.Get)(':id'),
     (0, swagger_1.ApiOperation)({
@@ -393,7 +364,7 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], CommentsController.prototype, "getCommentStats", null);
 exports.CommentsController = CommentsController = __decorate([
-    (0, swagger_1.ApiTags)('Comments'),
+    (0, swagger_1.ApiTags)('comments'),
     (0, common_1.Controller)('comments'),
     __metadata("design:paramtypes", [comments_service_1.CommentsService])
 ], CommentsController);

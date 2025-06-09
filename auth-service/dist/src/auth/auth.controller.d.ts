@@ -14,11 +14,6 @@ export declare class AuthController {
         message: string;
         user: User;
     }>;
-    healthCheck(): {
-        status: string;
-        timestamp: string;
-        service: string;
-    };
     validateToken(body: {
         token: string;
     }): Promise<any>;

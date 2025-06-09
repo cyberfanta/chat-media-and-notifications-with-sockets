@@ -7,40 +7,29 @@ const app_module_1 = require("./app.module");
 async function bootstrap() {
     const app = await core_1.NestFactory.create(app_module_1.AppModule);
     app.enableCors({
-        origin: true,
-        methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
-        allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With'],
+        origin: '*',
+        methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
         credentials: true,
-        exposedHeaders: ['Authorization'],
     });
     app.useGlobalPipes(new common_1.ValidationPipe({
+        transform: true,
         whitelist: true,
         forbidNonWhitelisted: true,
-        transform: true,
     }));
     const config = new swagger_1.DocumentBuilder()
-        .setTitle('Servicio de Autenticación')
-        .setDescription('API para autenticación y autorización de usuarios')
+        .setTitle('Auth Service API')
+        .setDescription('Microservicio de autenticación y gestión de usuarios')
         .setVersion('1.0')
-        .addBearerAuth({
-        type: 'http',
-        scheme: 'bearer',
-        bearerFormat: 'JWT',
-        name: 'JWT',
-        description: 'Ingresa el token JWT',
-        in: 'header',
-    }, 'JWT-auth')
+        .addBearerAuth()
+        .addTag('auth', 'Autenticación y autorización')
+        .addTag('health', 'Estado del servicio')
         .build();
     const document = swagger_1.SwaggerModule.createDocument(app, config);
-    swagger_1.SwaggerModule.setup('api/docs', app, document, {
-        swaggerOptions: {
-            persistAuthorization: true,
-        },
-    });
-    const port = process.env.PORT || 3000;
+    swagger_1.SwaggerModule.setup('api/docs', app, document);
+    const port = process.env.PORT || 5900;
     await app.listen(port);
-    console.log(`🚀 Servicio de Autenticación ejecutándose en puerto ${port}`);
-    console.log(`📚 Documentación Swagger disponible en: http://localhost:${port}/api/docs`);
+    console.log(`🔐 Auth Service ejecutándose en puerto ${port}`);
+    console.log(`📖 Documentación Swagger: http://localhost:${port}/api/docs`);
 }
 bootstrap();
 //# sourceMappingURL=main.js.map

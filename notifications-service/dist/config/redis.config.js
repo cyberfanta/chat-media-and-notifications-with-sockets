@@ -8,39 +8,53 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+var RedisConfig_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.RedisConfig = void 0;
 const common_1 = require("@nestjs/common");
 const config_1 = require("@nestjs/config");
-const ioredis_1 = require("ioredis");
-let RedisConfig = class RedisConfig {
+const Redis = require("redis");
+let RedisConfig = RedisConfig_1 = class RedisConfig {
     constructor(configService) {
         this.configService = configService;
+        this.logger = new common_1.Logger(RedisConfig_1.name);
+        this.initializeClients();
+    }
+    async initializeClients() {
+        const redisHost = this.configService.get('REDIS_HOST', 'redis-notifications');
+        const redisPort = this.configService.get('REDIS_PORT', 6379);
+        const redisPassword = this.configService.get('REDIS_PASSWORD');
         const redisConfig = {
-            host: this.configService.get('REDIS_HOST', 'localhost'),
-            port: this.configService.get('REDIS_PORT', 6379),
-            password: this.configService.get('REDIS_PASSWORD', undefined),
-            db: this.configService.get('REDIS_DB', 0),
-            retryDelayOnFailover: 100,
-            enableReadyCheck: false,
-            maxRetriesPerRequest: null,
+            socket: {
+                host: redisHost,
+                port: redisPort,
+                family: 4,
+            },
+            password: redisPassword || undefined,
         };
-        this.redisClient = new ioredis_1.default(redisConfig);
-        this.publisherClient = new ioredis_1.default(redisConfig);
-        this.subscriberClient = new ioredis_1.default(redisConfig);
+        this.redisClient = Redis.createClient(redisConfig);
+        this.publisher = Redis.createClient(redisConfig);
+        this.subscriber = Redis.createClient(redisConfig);
+        await Promise.all([
+            this.redisClient.connect(),
+            this.publisher.connect(),
+            this.subscriber.connect(),
+        ]);
+        this.logger.log('Redis clients connected successfully');
     }
     getClient() {
         return this.redisClient;
     }
     getPublisher() {
-        return this.publisherClient;
+        return this.publisher;
     }
     getSubscriber() {
-        return this.subscriberClient;
+        return this.subscriber;
     }
     async cacheUnreadNotifications(userId, notifications) {
         const key = `unread_notifications:${userId}`;
-        await this.redisClient.setex(key, 3600, JSON.stringify(notifications));
+        const ttl = 3600;
+        await this.redisClient.setEx(key, ttl, JSON.stringify(notifications));
     }
     async getUnreadNotifications(userId) {
         const key = `unread_notifications:${userId}`;
@@ -51,35 +65,36 @@ let RedisConfig = class RedisConfig {
         const key = `unread_notifications:${userId}`;
         await this.redisClient.del(key);
     }
-    async publishNotificationEvent(event, data) {
-        await this.publisherClient.publish('notification_events', JSON.stringify({ event, data }));
+    async publishNotificationEvent(eventType, data) {
+        await this.publisher.publish(`notification:${eventType}`, JSON.stringify(data));
     }
-    async publishEvent(channel, data) {
-        await this.publisherClient.publish(channel, JSON.stringify(data));
-    }
-    async subscribeToMicroserviceEvents() {
-        await this.subscriberClient.subscribe('auth_events', 'media_events', 'comments_events');
+    async subscribeToNotificationEvents(eventType, callback) {
+        await this.subscriber.subscribe(`notification:${eventType}`, callback);
     }
     async addUserConnection(userId, socketId) {
-        await this.redisClient.sadd(`user_connections:${userId}`, socketId);
+        const key = `user_connections:${userId}`;
+        await this.redisClient.sAdd(key, socketId);
+        await this.redisClient.expire(key, 3600);
     }
     async removeUserConnection(userId, socketId) {
-        await this.redisClient.srem(`user_connections:${userId}`, socketId);
+        const key = `user_connections:${userId}`;
+        await this.redisClient.sRem(key, socketId);
     }
     async getUserConnections(userId) {
-        return await this.redisClient.smembers(`user_connections:${userId}`);
+        const key = `user_connections:${userId}`;
+        return await this.redisClient.sMembers(key);
     }
-    async checkRateLimit(userId, limit = 10, window = 60) {
+    async checkRateLimit(userId) {
         const key = `rate_limit:${userId}`;
         const current = await this.redisClient.incr(key);
         if (current === 1) {
-            await this.redisClient.expire(key, window);
+            await this.redisClient.expire(key, 60);
         }
-        return current <= limit;
+        return current <= 10;
     }
 };
 exports.RedisConfig = RedisConfig;
-exports.RedisConfig = RedisConfig = __decorate([
+exports.RedisConfig = RedisConfig = RedisConfig_1 = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [config_1.ConfigService])
 ], RedisConfig);

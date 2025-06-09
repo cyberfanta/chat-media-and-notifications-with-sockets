@@ -26,7 +26,6 @@ async function bootstrap() {
     .setVersion('1.0')
     .addBearerAuth()
     .addTag('comments', 'Gestión de comentarios')
-    .addTag('moderation', 'Moderación de comentarios')
     .addTag('health', 'Estado del servicio')
     .build();
 

@@ -25,7 +25,7 @@ import { UpdateNotificationDto, MarkAsReadDto } from '../dto/update-notification
 import { NotificationFiltersDto } from '../dto/notification-filters.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
-@ApiTags('Notificaciones')
+@ApiTags('notifications')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
 @Controller('notifications')

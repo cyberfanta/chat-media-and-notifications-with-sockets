@@ -95,7 +95,7 @@ services:
       - auth-network
       - notifications-network  # Para publicar eventos de notificaciones
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/auth/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/auth/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -160,7 +160,7 @@ services:
       - comments-network  # Para comunicarse con comments-service
       - notifications-network  # Para publicar eventos de notificaciones
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -219,7 +219,7 @@ services:
       - auth-network  # Para comunicarse con auth-service
       - notifications-network  # Para publicar eventos de notificaciones
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/comments/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/comments/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -303,7 +303,193 @@ services:
       - media-network     # Para comunicarse con media-service
       - comments-network  # Para comunicarse con comments-service
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5903/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5903/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Base de datos PostgreSQL para Processing
+  postgres-processing:
+    image: postgres:15-alpine
+    container_name: postgres-processing
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: processing_db
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+      POSTGRES_HOST_AUTH_METHOD: md5
+      POSTGRES_INITDB_ARGS: "--auth-host=md5"
+    ports:
+      - "5436:5432"
+    volumes:
+      - postgres_processing_data:/var/lib/postgresql/data
+    networks:
+      - processing-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d processing_db"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Base de datos PostgreSQL para Cleanup
+  postgres-cleanup:
+    image: postgres:15-alpine
+    container_name: postgres-cleanup
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: cleanup_db
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+      POSTGRES_HOST_AUTH_METHOD: md5
+      POSTGRES_INITDB_ARGS: "--auth-host=md5"
+    ports:
+      - "5437:5432"
+    volumes:
+      - postgres_cleanup_data:/var/lib/postgresql/data
+    networks:
+      - cleanup-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d cleanup_db"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Servicio de Procesamiento (Puerto 5904)
+  processing-service:
+    build:
+      context: ./processing-service
+      dockerfile: Dockerfile
+    container_name: processing-service
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      PORT: 5904
+      DB_HOST: postgres-processing
+      DB_PORT: 5432
+      DB_USERNAME: admin
+      DB_PASSWORD: admin123
+      DB_NAME: processing_db
+      REDIS_HOST: redis-notifications
+      REDIS_PORT: 6379
+      REDIS_DB: 2
+      REDIS_PASSWORD: 
+      EVENT_REDIS_HOST: redis-notifications
+      EVENT_REDIS_PORT: 6379
+      EVENT_REDIS_DB: 0
+      MAX_CONCURRENT_JOBS: 5
+      IMAGE_QUALITY: 85
+      VIDEO_BITRATE: auto
+      THUMBNAIL_SIZE: 300
+      COMPRESSION_LEVEL: 7
+      PROCESSING_TIMEOUT_MINUTES: 30
+      MAX_RETRIES: 3
+      RETRY_DELAY_MINUTES: 5
+      ORIGINAL_STORAGE_PATH: /uploads/original
+      PROCESSED_STORAGE_PATH: /uploads/processed
+      THUMBNAIL_STORAGE_PATH: /uploads/thumbnails
+      TEMP_STORAGE_PATH: /uploads/temp
+    ports:
+      - "5904:5904"
+    volumes:
+      - media_uploads:/uploads
+    depends_on:
+      postgres-processing:
+        condition: service_healthy
+      redis-notifications:
+        condition: service_healthy
+    networks:
+      - processing-network
+      - notifications-network
+      - media-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5904/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Servicio de Cleanup (Puerto 5905)
+  cleanup-service:
+    build:
+      context: ./cleanup-service
+      dockerfile: Dockerfile
+    container_name: cleanup-service
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      PORT: 5905
+      DB_HOST: postgres-cleanup
+      DB_PORT: 5432
+      DB_USERNAME: admin
+      DB_PASSWORD: admin123
+      DB_NAME: cleanup_db
+      MEDIA_DB_HOST: postgres-media
+      MEDIA_DB_PORT: 5432
+      MEDIA_DB_USERNAME: admin
+      MEDIA_DB_PASSWORD: admin123
+      MEDIA_DB_NAME: media_db
+      CLEANUP_INTERVAL_HOURS: 6
+      CHUNK_RETENTION_HOURS: 6
+      UPLOAD_RETENTION_HOURS: 6
+      TEMP_FILES_RETENTION_HOURS: 24
+      STORAGE_WARNING_THRESHOLD: 90
+      STORAGE_CRITICAL_THRESHOLD: 95
+    ports:
+      - "5905:5905"
+    volumes:
+      - media_uploads:/uploads
+      - media_chunks:/chunks
+    depends_on:
+      postgres-cleanup:
+        condition: service_healthy
+      postgres-media:
+        condition: service_healthy
+    networks:
+      - cleanup-network
+      - media-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5905/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Dashboard de Monitoreo (Puerto 5906)
+  monitoring-dashboard:
+    build:
+      context: ./monitoring-dashboard
+      dockerfile: Dockerfile
+    container_name: monitoring-dashboard
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      PORT: 5906
+      PROCESSING_DB_HOST: postgres-processing
+      PROCESSING_DB_PORT: 5432
+      PROCESSING_DB_USERNAME: admin
+      PROCESSING_DB_PASSWORD: admin123
+      PROCESSING_DB_NAME: processing_db
+      REDIS_HOST: redis-notifications
+      REDIS_PORT: 6379
+      REDIS_DB: 2
+      REDIS_PASSWORD: 
+      EVENT_REDIS_HOST: redis-notifications
+      EVENT_REDIS_PORT: 6379
+      EVENT_REDIS_DB: 0
+    ports:
+      - "5906:5906"
+    volumes: []
+    depends_on:
+      postgres-processing:
+        condition: service_healthy
+      redis-notifications:
+        condition: service_healthy
+      processing-service:
+        condition: service_healthy
+    networks:
+      - processing-network
+      - notifications-network
+      - monitoring-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5906/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -336,6 +522,8 @@ volumes:
   postgres_media_data:
   postgres_comments_data:
   postgres_notifications_data:
+  postgres_processing_data:
+  postgres_cleanup_data:
   redis_auth_data:
   redis_notifications_data:
   pgadmin_data:
@@ -350,6 +538,12 @@ networks:
   comments-network:
     driver: bridge
   notifications-network:
+    driver: bridge
+  processing-network:
+    driver: bridge
+  cleanup-network:
+    driver: bridge
+  monitoring-network:
     driver: bridge
   testing-network:
     driver: bridge 

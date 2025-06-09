@@ -1,22 +1,24 @@
 import { ConfigService } from '@nestjs/config';
-import Redis from 'ioredis';
+import * as Redis from 'redis';
+import { Notification } from '../entities/notification.entity';
 export declare class RedisConfig {
     private configService;
-    private readonly redisClient;
-    private readonly publisherClient;
-    private readonly subscriberClient;
+    private readonly logger;
+    private redisClient;
+    private publisher;
+    private subscriber;
     constructor(configService: ConfigService);
-    getClient(): Redis;
-    getPublisher(): Redis;
-    getSubscriber(): Redis;
-    cacheUnreadNotifications(userId: string, notifications: any[]): Promise<void>;
-    getUnreadNotifications(userId: string): Promise<any[] | null>;
+    private initializeClients;
+    getClient(): Redis.RedisClientType;
+    getPublisher(): Redis.RedisClientType;
+    getSubscriber(): Redis.RedisClientType;
+    cacheUnreadNotifications(userId: string, notifications: Notification[]): Promise<void>;
+    getUnreadNotifications(userId: string): Promise<Notification[] | null>;
     invalidateUnreadNotifications(userId: string): Promise<void>;
-    publishNotificationEvent(event: string, data: any): Promise<void>;
-    publishEvent(channel: string, data: any): Promise<void>;
-    subscribeToMicroserviceEvents(): Promise<void>;
+    publishNotificationEvent(eventType: string, data: any): Promise<void>;
+    subscribeToNotificationEvents(eventType: string, callback: (message: string) => void): Promise<void>;
     addUserConnection(userId: string, socketId: string): Promise<void>;
     removeUserConnection(userId: string, socketId: string): Promise<void>;
     getUserConnections(userId: string): Promise<string[]>;
-    checkRateLimit(userId: string, limit?: number, window?: number): Promise<boolean>;
+    checkRateLimit(userId: string): Promise<boolean>;
 }

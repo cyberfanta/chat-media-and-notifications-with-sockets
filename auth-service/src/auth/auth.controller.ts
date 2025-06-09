@@ -28,7 +28,7 @@ import { Roles } from './decorators/roles.decorator';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { User, UserRole } from '../users/entities/user.entity';
 
-@ApiTags('Autenticación')
+@ApiTags('auth')
 @Controller('auth')
 @UseInterceptors(ClassSerializerInterceptor)
 export class AuthController {
@@ -141,19 +141,7 @@ export class AuthController {
     };
   }
 
-  @Get('health')
-  @ApiOperation({ summary: 'Verificar estado del servicio' })
-  @ApiResponse({
-    status: 200,
-    description: 'Servicio funcionando correctamente',
-  })
-  healthCheck(): { status: string; timestamp: string; service: string } {
-    return {
-      status: 'OK',
-      timestamp: new Date().toISOString(),
-      service: 'Auth Service',
-    };
-  }
+
 
   @Post('validate-token')
   @ApiOperation({ 

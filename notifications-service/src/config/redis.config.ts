@@ -16,11 +16,22 @@ export class RedisConfig {
   }
 
   private async initializeClients() {
-    const redisUrl = this.configService.get<string>('REDIS_URL') || 'redis://localhost:6380';
+    const redisHost = this.configService.get<string>('REDIS_HOST', 'redis-notifications');
+    const redisPort = this.configService.get<number>('REDIS_PORT', 6379);
+    const redisPassword = this.configService.get<string>('REDIS_PASSWORD');
     
-    this.redisClient = Redis.createClient({ url: redisUrl });
-    this.publisher = Redis.createClient({ url: redisUrl });
-    this.subscriber = Redis.createClient({ url: redisUrl });
+    const redisConfig = {
+      socket: {
+        host: redisHost,
+        port: redisPort,
+        family: 4, // Forzar IPv4
+      },
+      password: redisPassword || undefined,
+    };
+    
+    this.redisClient = Redis.createClient(redisConfig);
+    this.publisher = Redis.createClient(redisConfig);
+    this.subscriber = Redis.createClient(redisConfig);
 
     await Promise.all([
       this.redisClient.connect(),

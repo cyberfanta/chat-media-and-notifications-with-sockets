@@ -16,6 +16,7 @@ const auth_module_1 = require("./auth/auth.module");
 const users_module_1 = require("./users/users.module");
 const redis_module_1 = require("./redis/redis.module");
 const user_entity_1 = require("./users/entities/user.entity");
+const health_controller_1 = require("./health/health.controller");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -56,7 +57,7 @@ exports.AppModule = AppModule = __decorate([
             users_module_1.UsersModule,
             redis_module_1.RedisModule,
         ],
-        controllers: [],
+        controllers: [health_controller_1.HealthController],
         providers: [],
     })
 ], AppModule);

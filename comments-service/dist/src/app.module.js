@@ -16,6 +16,7 @@ const comments_service_1 = require("./services/comments.service");
 const auth_service_1 = require("./auth/auth.service");
 const jwt_auth_guard_1 = require("./auth/jwt-auth.guard");
 const redis_module_1 = require("./redis/redis.module");
+const health_controller_1 = require("./health/health.controller");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -26,7 +27,7 @@ exports.AppModule = AppModule = __decorate([
             typeorm_1.TypeOrmModule.forFeature([comment_entity_1.Comment]),
             redis_module_1.RedisModule,
         ],
-        controllers: [comments_controller_1.CommentsController],
+        controllers: [comments_controller_1.CommentsController, health_controller_1.HealthController],
         providers: [
             comments_service_1.CommentsService,
             auth_service_1.AuthService,

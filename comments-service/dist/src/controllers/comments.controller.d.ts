@@ -9,11 +9,6 @@ export declare class CommentsController {
     constructor(commentsService: CommentsService);
     createComment(mediaId: string, createCommentDto: CreateCommentDto, req: any): Promise<Comment>;
     getCommentsByMedia(mediaId: string, query: QueryCommentsDto): Promise<import("../services/comments.service").PaginatedComments>;
-    getHealth(): {
-        status: string;
-        timestamp: string;
-        service: string;
-    };
     getComment(id: string): Promise<Comment>;
     updateComment(id: string, updateCommentDto: UpdateCommentDto, req: any): Promise<Comment>;
     deleteComment(id: string, req: any): Promise<void>;

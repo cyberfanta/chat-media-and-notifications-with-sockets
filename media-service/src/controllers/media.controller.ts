@@ -30,7 +30,7 @@ import { InitUploadDto } from '../dto/init-upload.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Media } from '../entities/media.entity';
 
-@ApiTags('Media')
+@ApiTags('media')
 @Controller('media')
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth('JWT-auth')
@@ -59,7 +59,7 @@ export class MediaController {
     @Body() initUploadDto: InitUploadDto,
     @Request() req: any,
   ): Promise<Media> {
-    return await this.mediaService.initializeUpload(initUploadDto, req.user.sub);
+    return await this.mediaService.initUpload(req.user.sub, initUploadDto);
   }
 
   @Post('upload-chunk/:mediaId')
@@ -127,9 +127,9 @@ export class MediaController {
 
     return await this.mediaService.uploadChunk(
       mediaId,
-      chunkNum,
-      file,
       req.user.sub,
+      file,
+      chunkNum,
     );
   }
 
@@ -190,8 +190,8 @@ export class MediaController {
     status: 404,
     description: 'Media no encontrado',
   })
-  async getMedia(@Param('id') id: string): Promise<Media> {
-    return await this.mediaService.findById(id);
+  async getMedia(@Param('id') id: string, @Request() req: any): Promise<Media> {
+    return await this.mediaService.findOne(id, req.user.sub);
   }
 
   @Get()
@@ -205,7 +205,7 @@ export class MediaController {
     type: [Media],
   })
   async getUserMedia(@Request() req: any): Promise<Media[]> {
-    return await this.mediaService.findByUserId(req.user.sub);
+    return await this.mediaService.findAll(req.user.sub);
   }
 
   @Delete(':id')
@@ -236,9 +236,7 @@ export class MediaController {
     @Param('id') id: string,
     @Request() req: any,
   ): Promise<{ message: string }> {
-    // Extraer token del header para pasarlo al comments-service
-    const token = req.headers.authorization?.split(' ')[1];
-    await this.mediaService.deleteMedia(id, req.user.sub, token);
+    await this.mediaService.remove(id, req.user.sub);
     return { message: 'Media eliminado exitosamente' };
   }
 

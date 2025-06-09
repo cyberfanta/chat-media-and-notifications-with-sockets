@@ -60,14 +60,14 @@ export class MediaService {
 
     const media = this.mediaRepository.create({
       id: uuidv4(),
-      userId,
+      uploadedBy: userId,
       originalName: initUploadDto.originalName,
       mimeType: initUploadDto.mimeType,
       type: initUploadDto.type,
       totalSize: initUploadDto.totalSize,
       totalChunks: initUploadDto.totalChunks,
       uploadedChunks: 0,
-      status: MediaStatus.PENDING,
+      status: MediaStatus.INITIALIZING,
     });
 
     const chunkDir = path.join(this.chunksDir, media.id);
@@ -84,14 +84,14 @@ export class MediaService {
   /** Subir un chunk específico del archivo */
   async uploadChunk(mediaId: string, userId: string, file: Express.Multer.File, chunkNumber: number): Promise<{ success: boolean, uploadedChunks: number, totalChunks: number }> {
     const media = await this.mediaRepository.findOne({ 
-      where: { id: mediaId, userId } 
+      where: { id: mediaId, uploadedBy: userId } 
     });
 
     if (!media) {
       throw new NotFoundException('Media no encontrado');
     }
 
-    if (media.status !== MediaStatus.UPLOADING && media.status !== MediaStatus.PENDING) {
+    if (media.status !== MediaStatus.UPLOADING && media.status !== MediaStatus.INITIALIZING) {
       throw new BadRequestException('El archivo no está en estado de subida');
     }
 
@@ -120,7 +120,7 @@ export class MediaService {
   /** Ensamblar chunks y completar el upload */
   async completeUpload(mediaId: string, userId: string): Promise<Media> {
     const media = await this.mediaRepository.findOne({ 
-      where: { id: mediaId, userId } 
+      where: { id: mediaId, uploadedBy: userId } 
     });
 
     if (!media) {
@@ -146,16 +146,15 @@ export class MediaService {
       
       await this.mediaRepository.update(mediaId, {
         filePath: finalFilePath,
-        actualSize: fileStats.size,
+        totalSize: fileStats.size,
         status: MediaStatus.COMPLETED,
-        uploadedAt: new Date(),
       });
 
       await this.cleanupChunks(mediaId);
 
-      await this.redisService.publishEvent('media_uploaded', {
+      await this.redisService.publishNotificationEvent('media_uploaded', {
         mediaId: media.id,
-        userId: media.userId,
+        userId: media.uploadedBy,
         filename: media.originalName,
         success: true
       });
@@ -185,8 +184,8 @@ export class MediaService {
       
       writeStream.end();
       
-      await new Promise((resolve, reject) => {
-        writeStream.on('finish', resolve);
+      await new Promise<void>((resolve, reject) => {
+        writeStream.on('finish', () => resolve());
         writeStream.on('error', reject);
       });
     } catch (error) {
@@ -216,7 +215,7 @@ export class MediaService {
     const media = await this.findOne(id, userId);
 
     try {
-      await this.redisService.publishEvent('media_delete_comments', {
+      await this.redisService.publishNotificationEvent('media_delete_comments', {
         mediaId: id,
         userId: userId
       });
@@ -236,7 +235,7 @@ export class MediaService {
   /** Obtener un media específico del usuario */
   async findOne(id: string, userId: string): Promise<Media> {
     const media = await this.mediaRepository.findOne({
-      where: { id, userId },
+      where: { id, uploadedBy: userId },
     });
 
     if (!media) {
@@ -249,7 +248,7 @@ export class MediaService {
   /** Obtener todos los medias del usuario */
   async findAll(userId: string): Promise<Media[]> {
     return await this.mediaRepository.find({
-      where: { userId },
+      where: { uploadedBy: userId },
       order: { createdAt: 'DESC' },
     });
   }

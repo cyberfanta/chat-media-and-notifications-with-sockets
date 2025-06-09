@@ -286,7 +286,7 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], NotificationController.prototype, "cleanupExpired", null);
 exports.NotificationController = NotificationController = __decorate([
-    (0, swagger_1.ApiTags)('Notificaciones'),
+    (0, swagger_1.ApiTags)('notifications'),
     (0, swagger_1.ApiBearerAuth)(),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
     (0, common_1.Controller)('notifications'),

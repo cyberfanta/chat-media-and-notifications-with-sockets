@@ -21,6 +21,7 @@ const jwt_1 = require("@nestjs/jwt");
 const config_1 = require("@nestjs/config");
 const redis_config_1 = require("../config/redis.config");
 const notification_service_1 = require("../services/notification.service");
+const notification_filters_dto_1 = require("../dto/notification-filters.dto");
 let NotificationGateway = NotificationGateway_1 = class NotificationGateway {
     constructor(jwtService, configService, redisConfig, notificationService) {
         this.jwtService = jwtService;
@@ -80,6 +81,19 @@ let NotificationGateway = NotificationGateway_1 = class NotificationGateway {
             client.emit('unread_count', { count: unreadCount });
         }
     }
+    async handleGetNotifications(client, filters) {
+        if (!client.userId) {
+            client.emit('error', { message: 'No autenticado' });
+            return;
+        }
+        try {
+            const result = await this.notificationService.findAll(client.userId, filters);
+            client.emit('notifications', result);
+        }
+        catch (error) {
+            client.emit('error', { message: 'Error al obtener notificaciones' });
+        }
+    }
     async handleMarkAsRead(client, data) {
         if (!client.userId) {
             client.emit('error', { message: 'No autenticado' });
@@ -93,19 +107,6 @@ let NotificationGateway = NotificationGateway_1 = class NotificationGateway {
         }
         catch (error) {
             client.emit('error', { message: 'Error al marcar como leída' });
-        }
-    }
-    async handleGetNotifications(client, filters) {
-        if (!client.userId) {
-            client.emit('error', { message: 'No autenticado' });
-            return;
-        }
-        try {
-            const result = await this.notificationService.findAll(client.userId, filters);
-            client.emit('notifications', result);
-        }
-        catch (error) {
-            client.emit('error', { message: 'Error al obtener notificaciones' });
         }
     }
     async sendNotificationToUser(userId, notification) {
@@ -148,21 +149,26 @@ let NotificationGateway = NotificationGateway_1 = class NotificationGateway {
         return null;
     }
     async initializeRedisSubscription() {
-        const subscriber = this.redisConfig.getSubscriber();
-        subscriber.subscribe('notification_created');
-        subscriber.on('message', async (channel, message) => {
-            try {
-                this.logger.log(`Gateway recibió evento: ${channel}`);
-                const data = JSON.parse(message);
-                if (channel === 'notification_created') {
-                    await this.sendNotificationToUser(data.userId, data.notification);
-                    this.logger.log(`Notificación enviada por WebSocket a usuario: ${data.userId}`);
+        try {
+            await this.redisConfig.subscribeToNotificationEvents('created', (message) => {
+                try {
+                    this.logger.log(`Gateway recibió evento de notificación creada`);
+                    const data = JSON.parse(message);
+                    this.sendNotificationToUser(data.userId, data.notification).then(() => {
+                        this.logger.log(`Notificación enviada por WebSocket a usuario: ${data.userId}`);
+                    }).catch(error => {
+                        this.logger.error(`Error enviando notificación por WebSocket:`, error.stack);
+                    });
                 }
-            }
-            catch (error) {
-                this.logger.error('Error procesando mensaje de Redis:', error.stack);
-            }
-        });
+                catch (error) {
+                    this.logger.error('Error procesando mensaje de Redis:', error.stack);
+                }
+            });
+            this.logger.log('Redis subscription inicializada para notification:created');
+        }
+        catch (error) {
+            this.logger.error('Error inicializando suscripción de Redis:', error.stack);
+        }
     }
 };
 exports.NotificationGateway = NotificationGateway;
@@ -178,6 +184,14 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], NotificationGateway.prototype, "handleJoinNotifications", null);
 __decorate([
+    (0, websockets_1.SubscribeMessage)('get_notifications'),
+    __param(0, (0, websockets_1.ConnectedSocket)()),
+    __param(1, (0, websockets_1.MessageBody)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, notification_filters_dto_1.NotificationFiltersDto]),
+    __metadata("design:returntype", Promise)
+], NotificationGateway.prototype, "handleGetNotifications", null);
+__decorate([
     (0, websockets_1.SubscribeMessage)('mark_as_read'),
     __param(0, (0, websockets_1.ConnectedSocket)()),
     __param(1, (0, websockets_1.MessageBody)()),
@@ -185,14 +199,6 @@ __decorate([
     __metadata("design:paramtypes", [Object, Object]),
     __metadata("design:returntype", Promise)
 ], NotificationGateway.prototype, "handleMarkAsRead", null);
-__decorate([
-    (0, websockets_1.SubscribeMessage)('get_notifications'),
-    __param(0, (0, websockets_1.ConnectedSocket)()),
-    __param(1, (0, websockets_1.MessageBody)()),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object, Object]),
-    __metadata("design:returntype", Promise)
-], NotificationGateway.prototype, "handleGetNotifications", null);
 exports.NotificationGateway = NotificationGateway = NotificationGateway_1 = __decorate([
     (0, websockets_1.WebSocketGateway)({
         cors: {

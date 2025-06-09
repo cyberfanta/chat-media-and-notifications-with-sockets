@@ -8,6 +8,7 @@ import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { RedisModule } from './redis/redis.module';
 import { User } from './users/entities/user.entity';
+import { HealthController } from './health/health.controller';
 
 @Module({
   imports: [
@@ -54,7 +55,7 @@ import { User } from './users/entities/user.entity';
     UsersModule,
     RedisModule,
   ],
-  controllers: [],
+  controllers: [HealthController],
   providers: [],
 })
 export class AppModule {} 

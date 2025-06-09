@@ -46,13 +46,6 @@ let AuthController = class AuthController {
             user,
         };
     }
-    healthCheck() {
-        return {
-            status: 'OK',
-            timestamp: new Date().toISOString(),
-            service: 'Auth Service',
-        };
-    }
     async validateToken(body) {
         return await this.authService.validateTokenFromOtherService(body.token);
     }
@@ -172,17 +165,6 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], AuthController.prototype, "promoteToModerator", null);
 __decorate([
-    (0, common_1.Get)('health'),
-    (0, swagger_1.ApiOperation)({ summary: 'Verificar estado del servicio' }),
-    (0, swagger_1.ApiResponse)({
-        status: 200,
-        description: 'Servicio funcionando correctamente',
-    }),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", []),
-    __metadata("design:returntype", Object)
-], AuthController.prototype, "healthCheck", null);
-__decorate([
     (0, common_1.Post)('validate-token'),
     (0, swagger_1.ApiOperation)({
         summary: 'Validar token JWT y obtener información del usuario',
@@ -222,7 +204,7 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], AuthController.prototype, "validateToken", null);
 exports.AuthController = AuthController = __decorate([
-    (0, swagger_1.ApiTags)('Autenticación'),
+    (0, swagger_1.ApiTags)('auth'),
     (0, common_1.Controller)('auth'),
     (0, common_1.UseInterceptors)(common_1.ClassSerializerInterceptor),
     __metadata("design:paramtypes", [auth_service_1.AuthService])

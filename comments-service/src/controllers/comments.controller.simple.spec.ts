@@ -178,13 +178,5 @@ describe('CommentsController Simple Tests', () => {
     });
   });
 
-  describe('getHealth', () => {
-    it('should return health status', () => {
-      const result = controller.getHealth();
 
-      expect(result.status).toBe('ok');
-      expect(result.service).toBe('comments-service');
-      expect(result.timestamp).toBeDefined();
-    });
-  });
 }); 

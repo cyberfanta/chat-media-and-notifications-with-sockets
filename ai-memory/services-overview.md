@@ -308,4 +308,184 @@ Todos los servicios exponen `/health` endpoint que verifica:
 - Connection pooling en bases de datos
 - Cache inteligente con TTL apropiado
 - Rate limiting para prevenir abuso
-- Paginación optimizada en todas las consultas 
+- Paginación optimizada en todas las consultas
+
+---
+
+## 🎨 Processing Service (Puerto 5904) - NUEVO ✅
+
+### Responsabilidades
+- Compresión inteligente de archivos multimedia
+- Generación automática de thumbnails
+- Transformación de formatos
+- Cola de trabajos asíncronos
+- Publicación de 6 tipos de notificaciones
+
+### Entidades Principales
+```typescript
+// ProcessedMedia Entity
+{
+  id: string (UUID),
+  originalMediaId: string,
+  uploaderId: string,
+  mediaType: 'image' | 'video' | 'audio',
+  status: 'pending' | 'processing' | 'completed' | 'failed',
+  originalPath: string,
+  compressedPath: string,
+  compressionMetadata: JSON,
+  thumbnailMetadata: JSON,
+  processingDurationMs: number,
+  created_at: Date,
+  updated_at: Date
+}
+
+// ProcessingJob Entity
+{
+  id: string (UUID),
+  queueJobId: string,
+  jobType: 'compress_image' | 'compress_video' | 'compress_audio' | 'generate_thumbnails',
+  status: 'waiting' | 'active' | 'completed' | 'failed',
+  mediaId: string,
+  progress: JSON,
+  result: JSON,
+  attempts: number,
+  created_at: Date
+}
+```
+
+### Funcionalidades Principales
+- **Compresión Inteligente**: Sharp para imágenes, FFmpeg para videos/audio
+- **Thumbnails Automáticos**:
+  - Imágenes: Copia en baja resolución
+  - Videos: 10 frames en momentos clave
+  - Audio: Icono Material Design convertido a imagen
+- **Queue System**: Bull + Redis para procesamiento asíncrono
+- **Event Publishing**: 6 tipos de notificaciones en tiempo real
+
+### 6 Tipos de Notificaciones
+1. **processing_started** - Solo uploader (inicio de procesamiento)
+2. **processing_progress** - Solo uploader (progreso en tiempo real)
+3. **processing_completed** - Solo uploader (procesamiento completado)
+4. **processing_failed** - Solo uploader (error en procesamiento)
+5. **media_available_public** - TODOS los usuarios (nuevo media disponible)
+6. **media_quality_analysis** - Solo uploader (análisis de calidad)
+
+### Configuración
+- **Base de Datos**: PostgreSQL puerto 5436
+- **Queue**: Redis puerto 6380 (DB 2)
+- **Event Publisher**: Redis puerto 6380 (DB 0)
+- **Storage**: Directorios organizados `/uploads/processed/`, `/uploads/thumbnails/`
+
+---
+
+## 🧹 Cleanup Service (Puerto 5905) - NUEVO ✅
+
+### Responsabilidades
+- Limpieza automática de chunks huérfanos
+- Cleanup de uploads pendientes abandonados
+- Limpieza de archivos temporales
+- Monitoreo de espacio de almacenamiento
+- Jobs programados con Schedule
+
+### Funcionalidades
+- **Chunk Cleanup**: Elimina chunks >6 horas sin completar
+- **Upload Cleanup**: Elimina uploads PENDING >6 horas
+- **Temp Files**: Limpia archivos temporales >24 horas
+- **Storage Monitoring**: Alertas cuando espacio <10% disponible
+- **Scheduled Jobs**: Ejecución cada 6 horas automáticamente
+
+### Configuración
+- **Base de Datos**: PostgreSQL puerto 5437
+- **Media DB Access**: Conecta a postgres-media para consultas
+- **Storage Paths**: Acceso a `/uploads/` compartido
+- **Schedule**: Configurable via environment variables
+
+---
+
+## 📊 Monitoring Dashboard (Puerto 5906) - NUEVO ✅
+
+### Propósito
+Dashboard web independiente para monitorear cola de procesamiento y notificaciones emitidas, sin necesidad de autenticación de usuario específico.
+
+### Características UI
+- **UI Moderna**: Bootstrap 5 + Chart.js + Font Awesome
+- **Tiempo Real**: WebSocket para actualizaciones automáticas
+- **Gráficos Interactivos**: 
+  - Doughnut chart para estado de cola
+  - Line chart para notificaciones por minuto
+- **Responsive Design**: Adaptable a diferentes dispositivos
+
+### Funcionalidades de Monitoreo
+- **Cola de Procesamiento**:
+  - Estado de todos los trabajos (waiting, active, completed, failed)
+  - Progreso en tiempo real de trabajos activos
+  - Estadísticas de rendimiento
+- **Notificaciones Emitidas**:
+  - Stream en tiempo real de todas las notificaciones
+  - Filtros por tipo de notificación
+  - Historial de notificaciones recientes
+- **Métricas del Sistema**:
+  - Total de trabajos procesados
+  - Tasa de éxito del procesamiento
+  - Trabajos activos concurrentes
+
+### Endpoints API
+- `GET /api/dashboard/stats` - Estadísticas generales
+- `GET /api/dashboard/queue` - Estado de cola de procesamiento
+- `GET /api/dashboard/notifications` - Notificaciones recientes
+- `GET /dashboard` - Página principal del dashboard
+
+### Configuración
+- **UI Rendering**: Handlebars templates + Static assets
+- **WebSocket**: Socket.IO para actualizaciones en tiempo real
+- **Data Sources**: 
+  - Processing DB (PostgreSQL 5436)
+  - Redis Queue (puerto 6380)
+  - Event Stream (Redis pub/sub)
+
+---
+
+## 🗄️ Bases de Datos Actualizadas
+
+### Distribución por Servicio
+```
+Auth Service       -> PostgreSQL 5432 (auth_db)
+Media Service      -> PostgreSQL 5433 (media_db)  
+Comments Service   -> PostgreSQL 5434 (comments_db)
+Notifications      -> PostgreSQL 5435 (notifications_db)
+Processing Service -> PostgreSQL 5436 (processing_db)    [NUEVO]
+Cleanup Service    -> PostgreSQL 5437 (cleanup_db)       [NUEVO]
+```
+
+### Redis Configuration
+```
+Auth/Sessions      -> Redis 6379
+Notifications      -> Redis 6380 (pub/sub + cache)
+Processing Queue   -> Redis 6380 DB 2                    [NUEVO]
+Event Publishing   -> Redis 6380 DB 0                    [COMPARTIDO]
+```
+
+---
+
+## 🚀 Scripts de Inicio
+
+### Windows
+```bash
+# Iniciar todo el sistema
+start-processing-system.bat
+
+# Incluye verificación de Docker, health checks y URLs
+```
+
+### Puertos del Sistema Completo
+```
+🔐 Auth Service:           5900
+📁 Media Service:          5901
+💬 Comments Service:       5902
+🔔 Notifications Service:  5903
+🎨 Processing Service:     5904  [NUEVO]
+🧹 Cleanup Service:        5905  [NUEVO]
+📊 Monitoring Dashboard:   5906  [NUEVO]
+🧪 WebSocket Testing:      8080
+📊 pgAdmin:               5050
+``` 

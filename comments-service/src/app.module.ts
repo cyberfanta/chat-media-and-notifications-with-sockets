@@ -7,6 +7,7 @@ import { CommentsService } from './services/comments.service';
 import { AuthService } from './auth/auth.service';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { RedisModule } from './redis/redis.module';
+import { HealthController } from './health/health.controller';
 
 @Module({
   imports: [
@@ -14,7 +15,7 @@ import { RedisModule } from './redis/redis.module';
     TypeOrmModule.forFeature([Comment]),
     RedisModule,
   ],
-  controllers: [CommentsController],
+  controllers: [CommentsController, HealthController],
   providers: [
     CommentsService,
     AuthService,

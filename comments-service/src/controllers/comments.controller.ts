@@ -28,7 +28,7 @@ import { QueryCommentsDto } from '../dto/query-comments.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Comment } from '../entities/comment.entity';
 
-@ApiTags('Comments')
+@ApiTags('comments')
 @Controller('comments')
 export class CommentsController {
   constructor(private readonly commentsService: CommentsService) {}
@@ -142,30 +142,7 @@ export class CommentsController {
     return await this.commentsService.findByContentId(mediaId, query);
   }
 
-  @Get('health')
-  @ApiOperation({
-    summary: 'Health check del servicio',
-    description: 'Verifica que el servicio de comentarios esté funcionando correctamente',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Servicio funcionando correctamente',
-    schema: {
-      type: 'object',
-      properties: {
-        status: { type: 'string', example: 'ok' },
-        timestamp: { type: 'string' },
-        service: { type: 'string', example: 'comments-service' },
-      },
-    },
-  })
-  getHealth() {
-    return {
-      status: 'ok',
-      timestamp: new Date().toISOString(),
-      service: 'comments-service',
-    };
-  }
+
 
   @Get(':id')
   @ApiOperation({
